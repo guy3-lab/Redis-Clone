@@ -47,9 +47,26 @@ int main(int argc, char **argv) {
   int client_addr_len = sizeof(client_addr);
   std::cout << "Waiting for a client to connect...\n";
 
-  accept(server_fd, (struct sockaddr *) &client_addr, (socklen_t *) &client_addr_len);
+  int client_fd = accept(server_fd, (struct sockaddr *) &client_addr, (socklen_t *) &client_addr_len);
+  if(client_fd < 0){
+    std::cerr << "Failed to accept client connection.";
+    return 1;
+  }
   std::cout << "Client connected\n";
-  
+
+  std::string response = "+PONG\r\n";
+  write(client_fd, response.c_str(), response.size());
+
+  // if input is just PING 
+  // return PONG
+  // if input is PING with parameter
+  // return just parameter
+
+  // my issues:
+  // i don't know where to place code in call structure
+  // i don't know cpp syntax for how to implement this
+
+  close(client_fd);
   close(server_fd);
 
   return 0;
