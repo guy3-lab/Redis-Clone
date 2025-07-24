@@ -52,20 +52,13 @@ int main(int argc, char **argv) {
     std::cerr << "Failed to accept client connection.";
     return 1;
   }
-  std::cout << "Client connected\n";
+  std::cout << "Client connected.\n";
 
   std::string response = "+PONG\r\n";
-  write(client_fd, response.c_str(), response.size());
-
-  // if input is just PING 
-  // return PONG
-  // if input is PING with parameter
-  // return just parameter
-
-  // my issues:
-  // i don't know where to place code in call structure
-  // i don't know cpp syntax for how to implement this
-
+  while(true){
+    send(client_fd, response.c_str(), response.size(), 0);
+  }
+  
   close(client_fd);
   close(server_fd);
 
