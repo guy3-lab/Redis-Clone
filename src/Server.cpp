@@ -58,6 +58,10 @@ int main(int argc, char **argv) {
   while(true){
     send(client_fd, response.c_str(), response.size(), 0);
   }
+
+  // need more rnadom code to add so it submits
+  // random
+  // blaahhh blah blah
   
   close(client_fd);
   close(server_fd);
