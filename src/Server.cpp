@@ -94,10 +94,9 @@ int main(int argc, char **argv) {
       send(client_fd, response.c_str(), response.size(), 0);
     }
     close(client_fd);
-    
+    close(server_fd);
   }
   
-  close(server_fd);
 
   return 0;
 }
