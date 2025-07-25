@@ -58,13 +58,29 @@ int main(int argc, char **argv) {
   char buffer[4096];
 
   while(true){
-    // why does just sending in buffer work if it requires void *?
-    // shouldn't I have to pass in the buffer as a pointer?
-    // does read work here or do i have to use recv instead?
-    int bytes_read = read(client_fd, buffer, response.size());
-    // why does the condition below being true imply that the client has disconnected?
-    // why is it that if we cannot read the message then it must mean that the client has disconnected?
-    if(bytes_read < 0){
+    // Why does just sending in buffer work if it requires void *?
+      // because array names are basically pointers themselve. So it could've been any name, 
+      // and when passed into the function, the data will be stored at the first position in the array
+      // and will overwrite anything in that buckets position.
+    // Shouldn't I have to pass in the buffer as a pointer?
+      // no, because cpp will do that automatically for you with array types
+    // Does read work here or do i have to use recv instead?
+      // read works here but is part of POSIX, whereas recv also works and is part of a more specific socket family of use cases
+      // recv also has a 4th parameter that takes care of flags. idk anything about flags yet but well learn that later maybe
+    // Important note: 
+      // in the read function, I have passed response.size() but this is wrong.
+      // what should instead be passed is sizeof(buffer), or the number of bytes allocated to the buffer array previously created
+      // response.size is simply 7, in our case, because its the char length of PONG. 
+      // and if we use response.size, then larger messages sent by the client would be split and henced returned incorrectly
+      // so response.size needs to be updated to sizeof(buffer) (not 4096 because we shld maintain convention)
+    int bytes_read = read(client_fd, buffer, sizeof(buffer));
+    // Why does the condition below being true imply that the client has disconnected?
+      // first of all, the condition is actually wrong
+      // the client has only disconnected if the return value of the read function is 0. 
+      // if the return value is less than 0 then its just a general error
+      // and ofcourse if above 0 then it works so this needs to be updated to <= 0
+    // Why is it that if we cannot read the message then it must mean that the client has disconnected?
+    if(bytes_read <= 0){
       std::cerr << "Client disconnected.";
       break;
     }
