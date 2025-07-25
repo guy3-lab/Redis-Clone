@@ -55,13 +55,22 @@ int main(int argc, char **argv) {
   std::cout << "Client connected.\n";
 
   std::string response = "+PONG\r\n";
+  char buffer[4096];
+
   while(true){
+    // why does just sending in buffer work if it requires void *?
+    // shouldn't I have to pass in the buffer as a pointer?
+    // does read work here or do i have to use recv instead?
+    int bytes_read = read(client_fd, buffer, response.size());
+    // why does the condition below being true imply that the client has disconnected?
+    // why is it that if we cannot read the message then it must mean that the client has disconnected?
+    if(bytes_read < 0){
+      std::cerr << "Client disconnected.";
+      break;
+    }
+    // why does response.c_str() work here if send requires type const void * instead of const char *?
     send(client_fd, response.c_str(), response.size(), 0);
   }
-
-  // need more rnadom code to add so it submits
-  // random
-  // blaahhh blah blah
   
   close(client_fd);
   close(server_fd);
