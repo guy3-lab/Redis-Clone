@@ -7,6 +7,48 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <netdb.h>
+#include <thread>
+
+
+void handle_client(socklen_t client_fd){
+  std::string response = "+PONG\r\n";
+  char buffer[4096];
+
+  while(true){
+    // Why does just sending in buffer work if it requires void *?
+      // because array names are basically pointers themselve. So it could've been any name, 
+      // and when passed into the function, the data will be stored at the first position in the array
+      // and will overwrite anything in that buckets position.
+    // Shouldn't I have to pass in the buffer as a pointer?
+      // no, because cpp will do that automatically for you with array types
+    // Does read work here or do i have to use recv instead?
+      // read works here but is part of POSIX, whereas recv also works and is part of a more specific socket family of use cases
+      // recv also has a 4th parameter that takes care of flags. idk anything about flags yet but well learn that later maybe
+    // Important note: 
+      // in the read function, I have passed response.size() but this is wrong.
+      // what should instead be passed is sizeof(buffer), or the number of bytes allocated to the buffer array previously created
+      // response.size is simply 7, in our case, because its the char length of PONG. 
+      // and if we use response.size, then larger messages sent by the client would be split and henced returned incorrectly
+      // so response.size needs to be updated to sizeof(buffer) (not 4096 because we shld maintain convention)
+    int bytes_read = read(client_fd, buffer, sizeof(buffer));
+    // Why does the condition below being true imply that the client has disconnected?
+      // first of all, the condition is actually wrong
+      // the client has only disconnected if the return value of the read function is 0. 
+      // if the return value is less than 0 then its just a general error
+      // and ofcourse if above 0 then it works so this needs to be updated to <= 0
+    if(bytes_read <= 0){
+      std::cerr << "Client disconnected or EOF.";
+      break;
+    }
+    // why does response.c_str() work here if send requires type const void * instead of const char *?
+      // because cpp will automatically conversion chain data type pointers to a void pointer
+      // note that unlike char, void cannot be a data type on its own. it can only be used in method signature as the return type
+      // and, in the way we use it in this program, as a pointer such as void *.
+      // having a pointer variable of type void means that it is pointing to something but doesn't know what.
+    send(client_fd, response.c_str(), response.size(), 0);
+  }
+  close(client_fd);
+}
 
 int main(int argc, char **argv) {
   // Flush after every std::cout / std::cerr
@@ -43,11 +85,16 @@ int main(int argc, char **argv) {
     return 1;
   }
 
+  // using a while loop here actually just gets clients sequentially instead of concurrently
+  // causes an infinite loop too i think
+
+  //we can build a very simple multi threading program using the inbuilt thread library
 
   while(true){
-
+    // struct vs class difference is ONLY 1.
+    // struct members are public by default and class members are private by default
     struct sockaddr_in client_addr;
-    int client_addr_len = sizeof(client_addr);
+    socklen_t client_addr_len = sizeof(client_addr);
     std::cout << "Waiting for a client to connect...\n";
 
     int client_fd = accept(server_fd, (struct sockaddr *) &client_addr, (socklen_t *) &client_addr_len);
@@ -57,46 +104,14 @@ int main(int argc, char **argv) {
     }
     std::cout << "Client connected.\n";
 
-    std::string response = "+PONG\r\n";
-    char buffer[4096];
-
-    while(true){
-      // Why does just sending in buffer work if it requires void *?
-        // because array names are basically pointers themselve. So it could've been any name, 
-        // and when passed into the function, the data will be stored at the first position in the array
-        // and will overwrite anything in that buckets position.
-      // Shouldn't I have to pass in the buffer as a pointer?
-        // no, because cpp will do that automatically for you with array types
-      // Does read work here or do i have to use recv instead?
-        // read works here but is part of POSIX, whereas recv also works and is part of a more specific socket family of use cases
-        // recv also has a 4th parameter that takes care of flags. idk anything about flags yet but well learn that later maybe
-      // Important note: 
-        // in the read function, I have passed response.size() but this is wrong.
-        // what should instead be passed is sizeof(buffer), or the number of bytes allocated to the buffer array previously created
-        // response.size is simply 7, in our case, because its the char length of PONG. 
-        // and if we use response.size, then larger messages sent by the client would be split and henced returned incorrectly
-        // so response.size needs to be updated to sizeof(buffer) (not 4096 because we shld maintain convention)
-      int bytes_read = read(client_fd, buffer, sizeof(buffer));
-      // Why does the condition below being true imply that the client has disconnected?
-        // first of all, the condition is actually wrong
-        // the client has only disconnected if the return value of the read function is 0. 
-        // if the return value is less than 0 then its just a general error
-        // and ofcourse if above 0 then it works so this needs to be updated to <= 0
-      if(bytes_read <= 0){
-        std::cerr << "Client disconnected.";
-        break;
-      }
-      // why does response.c_str() work here if send requires type const void * instead of const char *?
-        // because cpp will automatically conversion chain data type pointers to a void pointer
-        // note that unlike char, void cannot be a data type on its own. it can only be used in method signature as the return type
-        // and, in the way we use it in this program, as a pointer such as void *.
-        // having a pointer variable of type void means that it is pointing to something but doesn't know what.
-      send(client_fd, response.c_str(), response.size(), 0);
-    }
-    close(client_fd);
-    close(server_fd);
+    std::thread client_thread(handle_client, client_fd);
+    // if we use join, the client handling order becomes sequential instead of concurrent
+    // this is because the calling thread will join the call flow, and main will wait till calling thread receives pong from server
+    // only after calling thread is finishe can client 2 be accepted
+    client_thread.detach();
   }
-  
+
+  close(server_fd);
 
   return 0;
 }
