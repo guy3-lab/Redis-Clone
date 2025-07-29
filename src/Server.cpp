@@ -9,6 +9,7 @@
 #include <netdb.h>
 #include <thread>
 #include <vector>
+#include <algorithm>
 
 /* Q n A*/
     // Why does just sending in buffer work if it requires void *?
