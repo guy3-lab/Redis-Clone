@@ -101,7 +101,7 @@ void handle_client(int client_fd){
     std::vector<std::string> message = parse_array_command(data);
     std::string respondMessage;
 
-    if(data.find("PING") != std::string::npos){
+    if(message[0].find("PING") != std::string::npos){
       respondMessage = "+PONG\r\n";
     }else{
       respondMessage = "$" + std::to_string(message[1].length()) + "\r\n" + message[1] + "\r\n"; 
