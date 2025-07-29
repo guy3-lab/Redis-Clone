@@ -55,7 +55,7 @@
         std::vector<std::string> result;
         index++;
         // we need this cuz length could be 2 or 10 -> single digit or double digit or more..
-        int array_length;
+        int array_length = 0;
         while(command[index] != '\r'){
           array_length = array_length * 10 + (command[index] - '0');
           index++;
@@ -64,7 +64,7 @@
         // now we reach bulk string
         for(int i = 0; i < array_length; i++){
           index++; // move past bulk string indicator: $
-          int str_length;
+          int str_length = 0;
           while(command[index] != '\r'){
             str_length = str_length * 10 + (command[index] - '0');
             index++;
@@ -73,7 +73,9 @@
           std::string message = "";
           while(command[index] != '\r'){
             message+=command[index];
+            index++;
           }
+          index+=2;
           result.push_back(message);
         }
 
@@ -81,7 +83,7 @@
       }
 
 
-void handle_client(socklen_t client_fd){
+void handle_client(int client_fd){
   std::string testResponse = "*2\r\n$4\r\nECHO\r\n$3\r\nhey\r\n";
   char buffer[4096];
 
@@ -99,7 +101,7 @@ void handle_client(socklen_t client_fd){
     std::vector<std::string> message = parse_array_command(data);
     std::string respondMessage;
 
-    if(data.find("PONG") != std::string::npos){
+    if(data.find("PING") != std::string::npos){
       respondMessage = "+PONG\r\n";
     }else{
       respondMessage = "$" + std::to_string(message[1].length()) + "\r\n" + message[1] + "\r\n"; 
