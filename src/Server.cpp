@@ -53,23 +53,28 @@
       std::vector<std::string> parse_array_command(const std::string& command){
         int index = 0;
         std::vector<std::string> result;
+
+        if(command[index] != '*') return result; //defensive
         index++;
         // we need this cuz length could be 2 or 10 -> single digit or double digit or more..
         int array_length = 0;
-        while(command[index] != '\r'){
+        while(index < command.length() && command[index] != '\r'){
           array_length = array_length * 10 + (command[index] - '0');
           index++;
         }
         index+=2; // skip \r\n
         // now we reach bulk string
         for(int i = 0; i < array_length; i++){
+          if(index >= command.length() || command[index] != '$') break;
           index++; // move past bulk string indicator: $
+
           int str_length = 0;
           while(command[index] != '\r'){
             str_length = str_length * 10 + (command[index] - '0');
             index++;
           }
-          index+=2;
+          index+=2; // skip \r\n
+
           std::string message = "";
           while(command[index] != '\r'){
             message+=command[index];
@@ -84,12 +89,11 @@
 
 
 void handle_client(int client_fd){
-  std::string testResponse = "*2\r\n$4\r\nECHO\r\n$3\r\nhey\r\n";
+  //std::string testResponse = "*2\r\n$4\r\nECHO\r\n$3\r\nhey\r\n";
   char buffer[4096];
 
-
   while(true){
-    
+    memset(buffer, 0, sizeof(buffer));
     int bytes_read = read(client_fd, buffer, sizeof(buffer));
     
     if(bytes_read <= 0){
@@ -99,12 +103,15 @@ void handle_client(int client_fd){
     
     std::string data(buffer, bytes_read);
     std::vector<std::string> message = parse_array_command(data);
+    std::transform(message[0].begin(), message[0].end(), message[0].begin(), ::toupper);
     std::string respondMessage;
 
-    if(message[0].find("PING") != std::string::npos){
+    if(message[0] == "PING"){
       respondMessage = "+PONG\r\n";
-    }else{
+    }else if(message[0] == "ECHO" && message.size() > 1){
       respondMessage = "$" + std::to_string(message[1].length()) + "\r\n" + message[1] + "\r\n"; 
+    } else{
+      respondMessage = "-ERR unknown command\r\n";
     }
 
     send(client_fd, respondMessage.c_str(), respondMessage.size(), 0);
