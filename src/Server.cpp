@@ -9,12 +9,7 @@
 #include <netdb.h>
 #include <thread>
 
-
-void handle_client(socklen_t client_fd){
-  std::string response = "+PONG\r\n";
-  char buffer[4096];
-
-  while(true){
+/* Q n A*/
     // Why does just sending in buffer work if it requires void *?
       // because array names are basically pointers themselve. So it could've been any name, 
       // and when passed into the function, the data will be stored at the first position in the array
@@ -30,22 +25,87 @@ void handle_client(socklen_t client_fd){
       // response.size is simply 7, in our case, because its the char length of PONG. 
       // and if we use response.size, then larger messages sent by the client would be split and henced returned incorrectly
       // so response.size needs to be updated to sizeof(buffer) (not 4096 because we shld maintain convention)
-    int bytes_read = read(client_fd, buffer, sizeof(buffer));
     // Why does the condition below being true imply that the client has disconnected?
       // first of all, the condition is actually wrong
       // the client has only disconnected if the return value of the read function is 0. 
       // if the return value is less than 0 then its just a general error
-      // and ofcourse if above 0 then it works so this needs to be updated to <= 0
-    if(bytes_read <= 0){
-      std::cerr << "Client disconnected or EOF.";
-      break;
-    }
+      // and ofcourse if above 0 then it works so this needs to be updated to <= 0  
     // why does response.c_str() work here if send requires type const void * instead of const char *?
       // because cpp will automatically conversion chain data type pointers to a void pointer
       // note that unlike char, void cannot be a data type on its own. it can only be used in method signature as the return type
       // and, in the way we use it in this program, as a pointer such as void *.
       // having a pointer variable of type void means that it is pointing to something but doesn't know what.
-    send(client_fd, response.c_str(), response.size(), 0);
+    // using a while loop here without any threading (initial solution) actually just gets clients sequentially instead of concurrently
+    // causes an infinite loop too i think
+    // we can build a very simple multi threading program using the inbuilt thread library
+    // what is the diff between struct and class?
+      // struct vs class difference is ONLY 1.
+      // struct members are public by default and class members are private by default
+    // why can't we use join instead of detach?
+      // if we use join, the client handling order becomes sequential instead of concurrent
+      // this is because the calling thread will join the call flow, and main will wait till calling thread receives pong from server
+      // only after calling thread is finishe can client 2 be accepted  
+
+      // build command parser that turns the resp command into an array of strings
+      // then go to handle_client method and return appropriate string for each command
+
+
+      std::vector<std::string> parse_array_command(const std::string& command){
+        int index = 0;
+        std::vector<std::string> result;
+        index++;
+        // we need this cuz length could be 2 or 10 -> single digit or double digit or more..
+        int array_length;
+        while(command[index] != '\r'){
+          array_length = array_length * 10 + (command[index] - '0');
+          index++;
+        }
+        index+=2; // skip \r\n
+        // now we reach bulk string
+        for(int i = 0; i < array_length; i++){
+          index++; // move past bulk string indicator: $
+          int str_length;
+          while(command[index] != '\r'){
+            str_length = str_length * 10 + (command[index] - '0');
+            index++;
+          }
+          index+=2;
+          std::string message = "";
+          while(command[index] != '\r'){
+            message+=command[index];
+          }
+          result.push_back(message);
+        }
+
+        return result;
+      }
+
+
+void handle_client(socklen_t client_fd){
+  std::string testResponse = "*2\r\n$4\r\nECHO\r\n$3\r\nhey\r\n";
+  char buffer[4096];
+
+
+  while(true){
+    
+    int bytes_read = read(client_fd, buffer, sizeof(buffer));
+    
+    if(bytes_read <= 0){
+      std::cerr << "Client disconnected or EOF.";
+      break;
+    }
+    
+    std::string data(buffer, bytes_read);
+    std::vector<std::string> message = parse_array_command(data);
+    std::string respondMessage;
+
+    if(data.find("PONG") != std::string::npos){
+      respondMessage = "+PONG\r\n";
+    }else{
+      respondMessage = "$" + std::to_string(message[1].length()) + "\r\n" + message[1] + "\r\n"; 
+    }
+
+    send(client_fd, respondMessage.c_str(), respondMessage.size(), 0);
   }
   close(client_fd);
 }
@@ -85,14 +145,7 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  // using a while loop here actually just gets clients sequentially instead of concurrently
-  // causes an infinite loop too i think
-
-  //we can build a very simple multi threading program using the inbuilt thread library
-
   while(true){
-    // struct vs class difference is ONLY 1.
-    // struct members are public by default and class members are private by default
     struct sockaddr_in client_addr;
     socklen_t client_addr_len = sizeof(client_addr);
     std::cout << "Waiting for a client to connect...\n";
@@ -105,9 +158,6 @@ int main(int argc, char **argv) {
     std::cout << "Client connected.\n";
 
     std::thread client_thread(handle_client, client_fd);
-    // if we use join, the client handling order becomes sequential instead of concurrent
-    // this is because the calling thread will join the call flow, and main will wait till calling thread receives pong from server
-    // only after calling thread is finishe can client 2 be accepted
     client_thread.detach();
   }
 
