@@ -8,6 +8,7 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <thread>
+#include <vector>
 
 /* Q n A*/
     // Why does just sending in buffer work if it requires void *?
