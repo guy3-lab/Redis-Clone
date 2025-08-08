@@ -10,6 +10,8 @@
 #include <thread>
 #include <vector>
 #include <algorithm>
+#include <unordered_map>
+#include <mutex>
 
 /* Q n A*/
     // Why does just sending in buffer work if it requires void *?
@@ -50,6 +52,13 @@
 
       // build command parser that turns the resp command into an array of strings
       // then go to handle_client method and return appropriate string for each command
+    // What is mutex? 
+    // Why can't I just use a regular hashmap? 
+    // What is this global storage thing? 
+    // What is thread safety and why do we need it? 
+    // What is lock_guard? What is lock? 
+    // What is auto? 
+    // What is the arrow key here, i've never seen it before: std::string value = it->second;?
 
 
       std::vector<std::string> parse_array_command(const std::string& command){
@@ -93,9 +102,11 @@
 void handle_client(int client_fd){
   //std::string testResponse = "*2\r\n$4\r\nECHO\r\n$3\r\nhey\r\n";
   char buffer[4096];
+  std::unordered_map<std::string, std::string> map;
+  std::mutex map_mutex;
 
   while(true){
-    memset(buffer, 0, sizeof(buffer));
+    memset(buffer, 0, sizeof(buffer)); // clear buffer
     int bytes_read = read(client_fd, buffer, sizeof(buffer));
     
     if(bytes_read <= 0){
@@ -108,13 +119,37 @@ void handle_client(int client_fd){
     std::transform(message[0].begin(), message[0].end(), message[0].begin(), ::toupper);
     std::string respondMessage;
 
+    // setup a hashmap for the set and get commands
+
     if(message[0] == "PING"){
       respondMessage = "+PONG\r\n";
     }else if(message[0] == "ECHO" && message.size() > 1){
       respondMessage = "$" + std::to_string(message[1].length()) + "\r\n" + message[1] + "\r\n"; 
-    } else{
+    } else if(message[0] == "SET" && message.size() > 2){
+      // set key to value
+      // message[1] is key message[2] is value
+      map_mutex.lock();
+      map[message[1]] = message[2];
+      map_mutex.unlock();
+
+      respondMessage = "+OK\r\n";
+    }else if(message[0] == "GET" && message.size() > 1){
+      // first check if the key exists
+      map_mutex.lock();
+      auto it = map.find(message[1]);
+      map_mutex.unlock();
+
+      if(it != map.end()){
+        respondMessage = "$" + std::to_string(it->second.length()) + "\r\n" + it->second + "\r\n";
+      } else{
+        respondMessage = "$-1\r\n";
+      }
+
+      // then output value
+    } else {
       respondMessage = "-ERR unknown command\r\n";
     }
+    
 
     send(client_fd, respondMessage.c_str(), respondMessage.size(), 0);
   }
