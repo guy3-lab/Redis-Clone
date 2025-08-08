@@ -13,7 +13,7 @@
 #include <unordered_map>
 #include <mutex>
 
-/* Q n A*/
+/* Q n A
     // Why does just sending in buffer work if it requires void *?
       // because array names are basically pointers themselve. So it could've been any name, 
       // and when passed into the function, the data will be stored at the first position in the array
@@ -59,51 +59,60 @@
     // What is lock_guard? What is lock? 
     // What is auto? 
     // What is the arrow key here, i've never seen it before: std::string value = it->second;?
+*/
 
+std::unordered_map<std::string, std::string> map;
+std::mutex map_mutex;
 
-      std::vector<std::string> parse_array_command(const std::string& command){
-        int index = 0;
-        std::vector<std::string> result;
+  std::vector<std::string> parse_array_command(const std::string& respString){ 
+    int index = 0;
+    std::vector<std::string> result;
 
-        if(command[index] != '*') return result; //defensive
+    if(respString[index] != '*') return result; //defensive
+    index++; // index + 1 for star
+    // we need this cuz length could be more than single digit numbers
+    // which would increase the length of the string 
+    int array_length = 0;
+    while(index < respString.length() && respString[index] != '\r'){
+      // ASCII characters go from 0 to 9, so we multiply by 10 to add 10s, 100s, etc
+      // say we have an array of length 27: *27
+      // (0 * 10) + ('2' - '0') = 2
+      // (2 * 10) + ('7' - '0') = 27
+      // then exit loop
+      array_length = array_length * 10 + (respString[index] - '0');
+      index++;
+    }
+    index+=2; // skip \r\n
+    // this loop iterates the every bulk string in entirety and adds every string to a vector
+    // from $[string length] to final \r\n before next $[string length]
+    for(int i = 0; i < array_length; i++){
+      if(index >= respString.length() || respString[index] != '$') break;
+      index++; // move past bulk string indicator: $
+
+      int str_length = 0;
+      while(respString[index] != '\r'){
+        str_length = str_length * 10 + (respString[index] - '0');
         index++;
-        // we need this cuz length could be 2 or 10 -> single digit or double digit or more..
-        int array_length = 0;
-        while(index < command.length() && command[index] != '\r'){
-          array_length = array_length * 10 + (command[index] - '0');
-          index++;
-        }
-        index+=2; // skip \r\n
-        // now we reach bulk string
-        for(int i = 0; i < array_length; i++){
-          if(index >= command.length() || command[index] != '$') break;
-          index++; // move past bulk string indicator: $
-
-          int str_length = 0;
-          while(command[index] != '\r'){
-            str_length = str_length * 10 + (command[index] - '0');
-            index++;
-          }
-          index+=2; // skip \r\n
-
-          std::string message = "";
-          while(command[index] != '\r'){
-            message+=command[index];
-            index++;
-          }
-          index+=2;
-          result.push_back(message);
-        }
-
-        return result;
       }
+      index+=2; // skip \r\n
+
+      std::string message = "";
+      while(respString[index] != '\r'){
+        message+=respString[index];
+        index++;
+      }
+      index+=2;
+      result.push_back(message);
+    }
+
+    return result;
+  }
 
 
 void handle_client(int client_fd){
   //std::string testResponse = "*2\r\n$4\r\nECHO\r\n$3\r\nhey\r\n";
+  //std::string testResponse2 = "*5\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n$2\r\npx\r\n$3\r\n100\r\n";
   char buffer[4096];
-  std::unordered_map<std::string, std::string> map;
-  std::mutex map_mutex;
 
   while(true){
     memset(buffer, 0, sizeof(buffer)); // clear buffer
@@ -114,12 +123,26 @@ void handle_client(int client_fd){
       break;
     }
     
-    std::string data(buffer, bytes_read);
-    std::vector<std::string> message = parse_array_command(data);
+    std::string respString(buffer, bytes_read);
+    // this is our vector with each element being a string
+    std::vector<std::string> message = parse_array_command(respString);
+    // sets initial command to all upper
     std::transform(message[0].begin(), message[0].end(), message[0].begin(), ::toupper);
+
+    int timeoutVal;
+    if(message[0] == "SET" && message.size() >= 3){
+      //int timeoutVal = 0; // inside the if-block because we need it to have been set in the first place. useful for GET condition
+      // nvm scope doesn't allow use it..
+      std::transform(message[3].begin(), message[3].end(), message[3].begin(), ::toupper); //whats the point of this? for set px check later. look down at inner GET condition
+      int index = 0;
+      while(index <= message[4].size()){
+        timeoutVal = (timeoutVal * 10) + (message[4][index] - '0');
+        index++;
+      }
+    }
     std::string respondMessage;
 
-    // setup a hashmap for the set and get commands
+    // use hashmap for the set and get commands
 
     if(message[0] == "PING"){
       respondMessage = "+PONG\r\n";
@@ -128,24 +151,48 @@ void handle_client(int client_fd){
     } else if(message[0] == "SET" && message.size() > 2){
       // set key to value
       // message[1] is key message[2] is value
+      if(message[3] == "PX"){
+        // no point in this condition. because user is either setting an expiry or not. 
+        // we need to handle the GET case instead
+      }
       map_mutex.lock();
       map[message[1]] = message[2];
       map_mutex.unlock();
 
       respondMessage = "+OK\r\n";
-    }else if(message[0] == "GET" && message.size() > 1){
-      // first check if the key exists
-      map_mutex.lock();
-      auto it = map.find(message[1]);
-      map_mutex.unlock();
+    } else if(message[0] == "GET" && message.size() > 1){
+      // we just need to check if a timeout value was set at all.
+      // and that is done by checking its existence in the first place.
+      if(timeoutVal == -1){
+        // first check if the key exists
+        map_mutex.lock();
+        auto it = map.find(message[1]);
+        map_mutex.unlock();
 
-      if(it != map.end()){
-        respondMessage = "$" + std::to_string(it->second.length()) + "\r\n" + it->second + "\r\n";
-      } else{
+        if(it != map.end()){
+          respondMessage = "$" + std::to_string(it->second.length()) + "\r\n" + it->second + "\r\n";
+        } else{
+          respondMessage = "$-1\r\n";
+        }
+      }
+      if(timeoutVal > 0){
+        // first check if the key exists
+        map_mutex.lock();
+        auto it = map.find(message[1]);
+        map_mutex.unlock();
+
+        if(it != map.end()){
+          respondMessage = "$" + std::to_string(it->second.length()) + "\r\n" + it->second + "\r\n";
+        } else{
+          respondMessage = "$-1\r\n";
+        }
+
+      }
+      // this check is important because we don't accept negative values  
+      if (timeoutVal == 0){
         respondMessage = "$-1\r\n";
       }
 
-      // then output value
     } else {
       respondMessage = "-ERR unknown command\r\n";
     }
