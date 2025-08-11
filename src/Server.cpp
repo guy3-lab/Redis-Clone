@@ -192,14 +192,30 @@ void handle_client(int client_fd){
       }
       mutex.unlock();
 
-    } else if (message[0] == "RPUSH") {
+    } else if (message[0] == "RPUSH" && message.size() > 2) {
       mutex.lock();
       for(int i = 2; i < message.size(); i++){
         listStorage[message[1]].push_back(message[i]);
       }
       mutex.unlock();
       respondMessage = ":" + std::to_string(listStorage[message[1]].size()) + "\r\n";
-    } else {
+    } else if(message[0] == "LRANGE" && message.size() > 3){
+      std::vector<std::string> printArray;
+      for(int i = std::stoi(message[2]); i <= std::stoi(message[3]); i++){
+        printArray.push_back(listStorage[message[1]][i]);
+      }
+      //print
+      if(printArray.size() != 0){
+        respondMessage = "*" + std::to_string(printArray.size());
+        for(int i = 0; i < printArray.size(); i++){
+          respondMessage += "$" + std::to_string(printArray[i].size()) + "\r\n" + printArray[i] + "\r\n";
+        }
+      } else {
+        respondMessage = "*0\r\n";
+      }
+      
+    }
+    else {
       respondMessage = "-ERR unknown command\r\n";
     }
     
