@@ -193,14 +193,12 @@ void handle_client(int client_fd){
       mutex.unlock();
 
     } else if (message[0] == "RPUSH") {
-      if(listStorage.count(message[1]) != 0){
-        for(int i = 2; i < message.size(); i++){
-          listStorage[message[1]].push_back(message[i]);
-        }
-        respondMessage = ":" + std::to_string(listStorage[message[1]].size()) + "\r\n";
-      } else {
-        respondMessage = ":" + std::to_string(listStorage[message[1]].size()) + "\r\n";
+      mutex.lock();
+      for(int i = 2; i < message.size(); i++){
+        listStorage[message[1]].push_back(message[i]);
       }
+      mutex.unlock();
+      respondMessage = ":" + std::to_string(listStorage[message[1]].size()) + "\r\n";
     } else {
       respondMessage = "-ERR unknown command\r\n";
     }
