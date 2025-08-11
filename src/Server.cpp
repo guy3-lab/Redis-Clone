@@ -64,7 +64,6 @@
 
 struct storageValue{
   std::string value;
-  //change to long long
   long long expiry_ms;
 };
 
@@ -188,7 +187,7 @@ void handle_client(int client_fd){
           respondMessage = "$" + std::to_string(storageMap[message[1]].value.size()) + "\r\n" + storageMap[message[1]].value + "\r\n";
         }  
       } else {
-        respondMessage = "-1\r\n";
+        respondMessage = "$-1\r\n";
       }
       mutex.unlock();
     } else {
