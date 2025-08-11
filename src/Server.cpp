@@ -76,7 +76,7 @@ long long get_current_time_ms(){
 
 std::unordered_map<std::string, storageValue> storageMap;
 std::mutex mutex;
-std::unordered_map<std::string, std::vector<std::string>> listStorage;
+std::unordered_map<std::string, std::deque<std::string>> listStorage;
 
   std::vector<std::string> parse_array_command(const std::string& respString){ 
     int index = 0;
@@ -199,10 +199,20 @@ void handle_client(int client_fd){
       }
       mutex.unlock();
       respondMessage = ":" + std::to_string(listStorage[message[1]].size()) + "\r\n";
-    } else if(message[0] == "LRANGE" && message.size() > 3) {
+    } else if (message[0] == "LPUSH" && message.size() > 2) {
+      mutex.lock();
+      for(int i = 2; i < message.size(); i++){
+        listStorage[message[1]].push_front(message[i]);
+      }
+      mutex.unlock();
+      respondMessage = ":" + std::to_string(listStorage[message[1]].size()) + "\r\n";
+    }
+    else if(message[0] == "LRANGE" && message.size() > 3) {
       int listSize = listStorage[message[1]].size();
       int start = std::stoi(message[2]);
       int stop = std::stoi(message[3]);
+
+      mutex.lock();
       if (start < 0) {
         if (start * -1 < listSize) {
           start += listSize;
@@ -219,6 +229,7 @@ void handle_client(int client_fd){
       }
 
       if (listStorage.count(message[1]) == 0 || start > listSize || start > stop) {
+        mutex.unlock();
         respondMessage = "*0\r\n";
       }
       else {
@@ -229,6 +240,7 @@ void handle_client(int client_fd){
         for (int i = start; i <= stop; i++) {
           printArray.push_back(listStorage[message[1]][i]);
         }
+        mutex.unlock();
         //print
         if (printArray.size() != 0 || printArray.size() > listSize) {
           respondMessage = "*" + std::to_string(printArray.size()) + "\r\n";
