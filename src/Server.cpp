@@ -65,7 +65,7 @@
 struct storageValue{
   std::string value;
   //change to long long
-  int expiry_ms;
+  long long expiry_ms;
 };
 
 long long get_current_time_ms(){
@@ -186,11 +186,10 @@ void handle_client(int client_fd){
           }
         } else {
           respondMessage = "$" + std::to_string(storageMap[message[1]].value.size()) + "\r\n" + storageMap[message[1]].value + "\r\n";
-        }
-      }  
-      // } else {
-      //   respondMessage = "-1\r\n";
-      // }
+        }  
+      } else {
+        respondMessage = "-1\r\n";
+      }
       
       mutex.unlock();
     } else {
