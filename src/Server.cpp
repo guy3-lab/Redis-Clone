@@ -205,6 +205,8 @@ void handle_client(int client_fd){
       int stop = std::stoi(message[3]);
       if (start < 0) start += listSize;
       if (stop < 0) stop += listSize;
+      if(start * -1 >= listSize) start = 0;
+      if(stop * -1 >= listSize) stop = 0;
 
       if (listStorage.count(message[1]) == 0 || start > listSize || start > stop){
         respondMessage = "*0\r\n";
