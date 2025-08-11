@@ -263,7 +263,8 @@ void handle_client(int client_fd){
     }
     else if (message[0] == "LPOP" && message.size() >= 2) {
       if(listStorage.count(message[1]) == 0){
-        respondMessage = ":0\r\n";
+        // list doesnt exist
+        respondMessage = "$-1\r\n";
       } else {
         mutex.lock();
         int index = std::stoi(message[2]);
