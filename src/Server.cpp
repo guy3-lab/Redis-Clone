@@ -200,23 +200,27 @@ void handle_client(int client_fd){
       mutex.unlock();
       respondMessage = ":" + std::to_string(listStorage[message[1]].size()) + "\r\n";
     } else if(message[0] == "LRANGE" && message.size() > 3){
+      int listSize = listStorage[message[1]].size();
       int start = std::stoi(message[2]);
       int stop = std::stoi(message[3]);
-      if(listStorage.count(message[1]) == 0 || start > listStorage[message[1]].size() || start > stop){
+      if (start < 0) start += listSize;
+      if (stop < 0) stop += listSize;
+
+      if (listStorage.count(message[1]) == 0 || start > listSize || start > stop){
         respondMessage = "*0\r\n";
       }
-      else{
-        if(stop > listStorage[message[1]].size()){
-          stop = listStorage[message[1]].size() - 1;
+      else {
+        if (stop > listSize) {
+          stop = listSize - 1;
         }
         std::vector<std::string> printArray;
-        for(int i = start; i <= stop; i++){
+        for (int i = start; i <= stop; i++) {
           printArray.push_back(listStorage[message[1]][i]);
         }
         //print
-        if(printArray.size() != 0 || printArray.size() > listStorage[message[1]].size()){
+        if (printArray.size() != 0 || printArray.size() > listSize) {
           respondMessage = "*" + std::to_string(printArray.size()) + "\r\n";
-          for(int i = 0; i < printArray.size(); i++){
+          for (int i = 0; i < printArray.size(); i++){
             respondMessage += "$" + std::to_string(printArray[i].size()) + "\r\n" + printArray[i] + "\r\n";
           }
         } else {
