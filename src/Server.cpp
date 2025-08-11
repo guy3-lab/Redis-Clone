@@ -173,16 +173,19 @@ void handle_client(int client_fd){
       respondMessage = "+OK\r\n";
     } else if (message[0] == "GET" && message.size() > 1) {
       mutex.lock();
-      if (storageMap[message[1]].expiry_ms > 0){
-        if (get_current_time_ms() <= storageMap[message[1]].expiry_ms){
-          respondMessage = "$" + std::to_string(storageMap[message[1]].value.size()) + "\r\n" + storageMap[message[1]].value + "\r\n";
+      if(storageMap.count(message[1]) > 0) { // check if count of a key is greater than 0 (all keys are unique so either 0 or 1)
+        if (storageMap[message[1]].expiry_ms > 0){
+          if (get_current_time_ms() <= storageMap[message[1]].expiry_ms){
+            respondMessage = "$" + std::to_string(storageMap[message[1]].value.size()) + "\r\n" + storageMap[message[1]].value + "\r\n";
+          } else {
+            storageMap.erase(message[1]);
+            respondMessage = "-1\r\n";
+          }
         } else {
-          storageMap.erase(message[1]);
-          respondMessage = "-1\r\n";
+          respondMessage = "$" + std::to_string(storageMap[message[1]].value.size()) + "\r\n" + storageMap[message[1]].value + "\r\n";
         }
-      } else {
-        respondMessage = "$" + std::to_string(storageMap[message[1]].value.size()) + "\r\n" + storageMap[message[1]].value + "\r\n";
       }
+      
       mutex.unlock();
     } else {
       respondMessage = "-ERR unknown command\r\n";
