@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <unordered_map>
 #include <mutex>
+#include <chrono>
 
 /* Q n A
     // Why does just sending in buffer work if it requires void *?
@@ -61,8 +62,20 @@
     // What is the arrow key here, i've never seen it before: std::string value = it->second;?
 */
 
-std::unordered_map<std::string, std::string> map;
-std::mutex map_mutex;
+struct storageValue{
+  std::string value;
+  int expiry_ms;
+};
+
+long long get_current_time_ms(){
+  auto now = std::chrono::system_clock::now(); // time right now - not in ms
+  auto time_since_beginning = now.time_since_epoch(); // time since 1970 (systems beginning of time) - not in ms
+  auto time_since_beginning_ms = std::chrono::duration_cast<std::chrono::milliseconds>(time_since_beginning); // above time but in ms
+  return time_since_beginning_ms.count();
+}
+
+std::unordered_map<std::string, storageValue> storageMap;
+std::mutex mutex;
 
   std::vector<std::string> parse_array_command(const std::string& respString){ 
     int index = 0;
@@ -128,71 +141,49 @@ void handle_client(int client_fd){
     std::vector<std::string> message = parse_array_command(respString);
     // sets initial command to all upper
     std::transform(message[0].begin(), message[0].end(), message[0].begin(), ::toupper);
-
-    int timeoutVal;
-    if(message[0] == "SET" && message.size() >= 3){
-      //int timeoutVal = 0; // inside the if-block because we need it to have been set in the first place. useful for GET condition
-      // nvm scope doesn't allow use it..
-      std::transform(message[3].begin(), message[3].end(), message[3].begin(), ::toupper); //whats the point of this? for set px check later. look down at inner GET condition
-      int index = 0;
-      while(index <= message[4].size()){
-        timeoutVal = (timeoutVal * 10) + (message[4][index] - '0');
-        index++;
-      }
-    }
     std::string respondMessage;
 
     // use hashmap for the set and get commands
+    // original solution of just checking for time expiry when timout is 0 doesnt work.
+    // this is because when the user passes in a value like 100
+    // the 100 is only a string. and even if we convert it, that value will never change
+    // because its not associated with the system running our program...
+    // this sounds quite obvious once it makes sense
+    // so instead we have to simulate the exact time when the user sets an input
+    // and the exact time after the users input is over.
 
-    if(message[0] == "PING"){
+    if (message[0] == "PING") {
       respondMessage = "+PONG\r\n";
-    }else if(message[0] == "ECHO" && message.size() > 1){
+    } else if (message[0] == "ECHO" && message.size() > 1) {
       respondMessage = "$" + std::to_string(message[1].length()) + "\r\n" + message[1] + "\r\n"; 
-    } else if(message[0] == "SET" && message.size() > 2){
-      // set key to value
-      // message[1] is key message[2] is value
-      if(message[3] == "PX"){
-        // no point in this condition. because user is either setting an expiry or not. 
-        // we need to handle the GET case instead
+    } else if (message[0] == "SET" && message.size() > 2) {
+      if (message.size() >= 5) {
+        std::transform(message[3].begin(), message[3].end(), message[3].begin(), ::tolower);
+        if (message[3] == "px") {
+          int input_expiry_ms = std::stoi(message[4]); // 100
+          int final_expiry_ms = get_current_time_ms() + input_expiry_ms; //1100
+          storageMap[message[1]] = {message[2], final_expiry_ms}; // {"bar", 1100}
+        }
+      } else {
+        mutex.lock();
+        storageMap[message[1]] = {message[2], 0};
+        mutex.unlock();
       }
-      map_mutex.lock();
-      map[message[1]] = message[2];
-      map_mutex.unlock();
 
       respondMessage = "+OK\r\n";
-    } else if(message[0] == "GET" && message.size() > 1){
-      // we just need to check if a timeout value was set at all.
-      // and that is done by checking its existence in the first place.
-      if(timeoutVal == -1){
-        // first check if the key exists
-        map_mutex.lock();
-        auto it = map.find(message[1]);
-        map_mutex.unlock();
-
-        if(it != map.end()){
-          respondMessage = "$" + std::to_string(it->second.length()) + "\r\n" + it->second + "\r\n";
-        } else{
-          respondMessage = "$-1\r\n";
+    } else if (message[0] == "GET" && message.size() > 1) {
+      mutex.lock();
+      if (storageMap[message[1]].expiry_ms > 0){
+        if (get_current_time_ms() <= storageMap[message[1]].expiry_ms){
+          respondMessage = "$" + std::to_string(message[1].size()) + "\r\n" + message[1] + "\r\n";
+        } else {
+          storageMap.erase(message[1]);
+          respondMessage = "-1\r\n";
         }
+      } else {
+        respondMessage = "$" + std::to_string(message[1].size()) + "\r\n" + message[1] + "\r\n";
       }
-      if(timeoutVal > 0){
-        // first check if the key exists
-        map_mutex.lock();
-        auto it = map.find(message[1]);
-        map_mutex.unlock();
-
-        if(it != map.end()){
-          respondMessage = "$" + std::to_string(it->second.length()) + "\r\n" + it->second + "\r\n";
-        } else{
-          respondMessage = "$-1\r\n";
-        }
-
-      }
-      // this check is important because we don't accept negative values  
-      if (timeoutVal == 0){
-        respondMessage = "$-1\r\n";
-      }
-
+      mutex.unlock();
     } else {
       respondMessage = "-ERR unknown command\r\n";
     }
