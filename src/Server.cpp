@@ -161,7 +161,7 @@ void handle_client(int client_fd){
         std::transform(message[3].begin(), message[3].end(), message[3].begin(), ::tolower);
         if (message[3] == "px") {
           int input_expiry_ms = std::stoi(message[4]); // 100
-          int final_expiry_ms = get_current_time_ms() + input_expiry_ms; //1100
+          long long final_expiry_ms = get_current_time_ms() + input_expiry_ms; //1100
           mutex.lock();
           storageMap[message[1]] = {message[2], final_expiry_ms}; // {"bar", 1100}
           mutex.unlock();
@@ -177,7 +177,7 @@ void handle_client(int client_fd){
       mutex.lock();
       if(storageMap.count(message[1]) > 0) { // check if count of a key is greater than 0 (all keys are unique so either 0 or 1)
         if (storageMap[message[1]].expiry_ms > 0){
-          if (get_current_time_ms() <= storageMap[message[1]].expiry_ms){
+          if (get_current_time_ms() < storageMap[message[1]].expiry_ms){
             respondMessage = "$" + std::to_string(storageMap[message[1]].value.size()) + "\r\n" + storageMap[message[1]].value + "\r\n";
           } else {
             storageMap.erase(message[1]);
