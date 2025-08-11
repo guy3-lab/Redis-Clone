@@ -163,9 +163,9 @@ void handle_client(int client_fd){
         if (message[3] == "px") {
           int input_expiry_ms = std::stoi(message[4]); // 100
           int final_expiry_ms = get_current_time_ms() + input_expiry_ms; //1100
-          //mutex.lock();
+          mutex.lock();
           storageMap[message[1]] = {message[2], final_expiry_ms}; // {"bar", 1100}
-          //mutex.unlock();
+          mutex.unlock();
         }
       } else {
         mutex.lock();
@@ -190,7 +190,6 @@ void handle_client(int client_fd){
       } else {
         respondMessage = "-1\r\n";
       }
-      
       mutex.unlock();
     } else {
       respondMessage = "-ERR unknown command\r\n";
