@@ -206,7 +206,7 @@ void handle_client(int client_fd){
       }
       //print
       if(printArray.size() != 0){
-        respondMessage = "*" + std::to_string(printArray.size());
+        respondMessage = "*" + std::to_string(printArray.size()) + "\r\n";
         for(int i = 0; i < printArray.size(); i++){
           respondMessage += "$" + std::to_string(printArray[i].size()) + "\r\n" + printArray[i] + "\r\n";
         }
