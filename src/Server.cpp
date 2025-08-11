@@ -175,13 +175,13 @@ void handle_client(int client_fd){
       mutex.lock();
       if (storageMap[message[1]].expiry_ms > 0){
         if (get_current_time_ms() <= storageMap[message[1]].expiry_ms){
-          respondMessage = "$" + std::to_string(message[1].size()) + "\r\n" + message[1] + "\r\n";
+          respondMessage = "$" + std::to_string(storageMap[message[1]].value.size()) + "\r\n" + storageMap[message[1]].value + "\r\n";
         } else {
           storageMap.erase(message[1]);
           respondMessage = "-1\r\n";
         }
       } else {
-        respondMessage = "$" + std::to_string(message[1].size()) + "\r\n" + message[1] + "\r\n";
+        respondMessage = "$" + std::to_string(storageMap[message[1]].value.size()) + "\r\n" + storageMap[message[1]].value + "\r\n";
       }
       mutex.unlock();
     } else {
