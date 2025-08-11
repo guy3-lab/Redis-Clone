@@ -262,9 +262,11 @@ void handle_client(int client_fd){
       }
     }
     else if (message[0] == "LPOP" && message.size() >= 2) {
-      if(listStorage.count(message[1]) == 0){
+      if(listStorage.count(message[1]) == 0) {
         // list doesnt exist
         respondMessage = "$-1\r\n";
+      } else if (message.size() == 2) {
+        respondMessage = "$" + std::to_string(listStorage[message[1]][0].size()) + "\r\n" + listStorage[message[1]][0] + "\r\n";
       } else {
         mutex.lock();
         int index = std::stoi(message[2]);
@@ -276,13 +278,9 @@ void handle_client(int client_fd){
         }
         mutex.unlock();
 
-        if (message.size() == 2) {
-          respondMessage = "$" + std::to_string(listStorage[message[1]][0].size()) + "\r\n" + listStorage[message[1]][0] + "\r\n";
-        } else {
-          respondMessage = "*" + std::to_string(printArray.size()) + "\r\n";
-          for(const auto& element : printArray){
-            respondMessage += "$" + std::to_string(element.size()) + "\r\n" + element + "\r\n";
-          }
+        respondMessage = "*" + std::to_string(printArray.size()) + "\r\n";
+        for(const auto& element : printArray){
+          respondMessage += "$" + std::to_string(element.size()) + "\r\n" + element + "\r\n";
         }
       }
     }
