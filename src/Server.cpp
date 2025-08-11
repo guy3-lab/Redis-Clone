@@ -76,6 +76,7 @@ long long get_current_time_ms(){
 
 std::unordered_map<std::string, storageValue> storageMap;
 std::mutex mutex;
+std::unordered_map<std::string, std::vector<std::string>> listStorage;
 
   std::vector<std::string> parse_array_command(const std::string& respString){ 
     int index = 0;
@@ -190,6 +191,16 @@ void handle_client(int client_fd){
         respondMessage = "$-1\r\n";
       }
       mutex.unlock();
+
+    } else if (message[0] == "RPUSH") {
+      if(listStorage.count(message[1]) != 0){
+        for(int i = 2; i < message.size(); i++){
+          listStorage[message[1]].push_back(message[i]);
+        }
+        respondMessage = ":" + std::to_string(listStorage[message[1]].size()) + "\r\n";
+      } else {
+        respondMessage = ":" + std::to_string(listStorage[message[1]].size()) + "\r\n";
+      }
     } else {
       respondMessage = "-ERR unknown command\r\n";
     }
