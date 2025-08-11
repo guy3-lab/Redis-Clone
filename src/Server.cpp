@@ -64,6 +64,7 @@
 
 struct storageValue{
   std::string value;
+  //change to long long
   int expiry_ms;
 };
 
@@ -162,7 +163,9 @@ void handle_client(int client_fd){
         if (message[3] == "px") {
           int input_expiry_ms = std::stoi(message[4]); // 100
           int final_expiry_ms = get_current_time_ms() + input_expiry_ms; //1100
+          //mutex.lock();
           storageMap[message[1]] = {message[2], final_expiry_ms}; // {"bar", 1100}
+          //mutex.unlock();
         }
       } else {
         mutex.lock();
@@ -179,12 +182,15 @@ void handle_client(int client_fd){
             respondMessage = "$" + std::to_string(storageMap[message[1]].value.size()) + "\r\n" + storageMap[message[1]].value + "\r\n";
           } else {
             storageMap.erase(message[1]);
-            respondMessage = "-1\r\n";
+            respondMessage = "$-1\r\n";
           }
         } else {
           respondMessage = "$" + std::to_string(storageMap[message[1]].value.size()) + "\r\n" + storageMap[message[1]].value + "\r\n";
         }
-      }
+      }  
+      // } else {
+      //   respondMessage = "-1\r\n";
+      // }
       
       mutex.unlock();
     } else {
