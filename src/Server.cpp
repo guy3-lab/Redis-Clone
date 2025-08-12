@@ -266,6 +266,9 @@ void handle_client(int client_fd){
         // list doesnt exist
         respondMessage = "$-1\r\n";
       } else if (message.size() == 2) {
+        mutex.lock();
+        listStorage[message[1]].pop_front();
+        mutex.unlock();
         respondMessage = "$" + std::to_string(listStorage[message[1]][0].size()) + "\r\n" + listStorage[message[1]][0] + "\r\n";
       } else {
         mutex.lock();
