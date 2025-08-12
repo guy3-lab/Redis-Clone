@@ -262,16 +262,17 @@ void handle_client(int client_fd){
       }
     }
     else if (message[0] == "LPOP" && message.size() >= 2) {
+      mutex.lock();
       if(listStorage.count(message[1]) == 0) {
         // list doesnt exist
+        mutex.unlock();
         respondMessage = "$-1\r\n";
       } else if (message.size() == 2) {
-        mutex.lock();
+        std::string frontVal = listStorage[message[1]][0];
         listStorage[message[1]].pop_front();
         mutex.unlock();
-        respondMessage = "$" + std::to_string(listStorage[message[1]][0].size()) + "\r\n" + listStorage[message[1]][0] + "\r\n";
+        respondMessage = "$" + std::to_string(frontVal.size()) + "\r\n" + frontVal + "\r\n";
       } else {
-        mutex.lock();
         int index = std::stoi(message[2]);
         std::vector<std::string> printArray;
         while(index != 0){
