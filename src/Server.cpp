@@ -288,6 +288,9 @@ void handle_client(int client_fd){
         }
       }
     }
+    else if (message[0] == "BLPOP" && message.size() > 2) {
+      
+    }
     else {
       respondMessage = "-ERR unknown command\r\n";
     }
