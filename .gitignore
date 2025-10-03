@@ -80,3 +80,7 @@ test-*
 /tmp/
 
 wait_debug.txt
+
+.codecrafters
+.vscode
+
