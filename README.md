@@ -1,206 +1,154 @@
-# Redis Server Implementation
+# Redis Server from Scratch
 
-A fully-functional Redis server built from scratch in C++17, implementing the Redis Serialization Protocol (RESP) and supporting replication, persistence, pub/sub messaging, and geospatial indexing.
+A production-grade Redis server implementation in C++17, featuring master-replica replication, RDB persistence, pub/sub messaging, and geospatial indexing. Built without external libraries to demonstrate depth in understanding of systems programming, network protocols, and distributed systems.
 
-## Overview
+## Core Capabilities
 
-This project demonstrates low-level systems programming by reimplementing core Redis functionality without using any Redis libraries. It handles binary protocols, concurrent client connections, and implements distributed systems concepts like master-replica replication.
-
-**Lines of Code**: ~3,500+ across multiple modules  
-**Development Time**: Independent project  
-**Test Coverage**: 70+ comprehensive integration tests
-
-## Key Features
-
-### Core Data Structures
-- **Strings**: GET, SET with expiry (PX flag)
-- **Lists**: LPUSH, RPUSH, LPOP, RPOP, LRANGE, blocking variants (BLPOP, BRPOP)
-- **Streams**: XADD, XRANGE, XREAD with blocking support
-- **Sorted Sets**: ZADD, ZRANK, ZRANGE, ZCARD, ZSCORE, ZREM
+### Data Structures
+- **Key-Value Store**: SET, GET, INCR with millisecond-precision expiry
+- **Lists**: LPUSH, RPUSH, LPOP, RPOP, LRANGE, LLEN + blocking operations (BLPOP, BRPOP)
+- **Streams**: XADD with auto-ID generation, XRANGE, XREAD with BLOCK support
+- **Sorted Sets**: ZADD, ZRANK, ZRANGE, ZCARD, ZSCORE, ZREM with lexicographic ordering
+- **Transactions**: MULTI, EXEC, DISCARD with atomic execution guarantees
 
 ### Distributed Systems Features
-- **Master-Replica Replication**
-  - Automatic handshake (PING, REPLCONF, PSYNC)
-  - Command propagation with offset tracking
-  - WAIT command for synchronization guarantees
-  - Full resync with RDB transfer
+
+**Master-Replica Replication**
+- Full handshake protocol (PING, REPLCONF, PSYNC)
+- Real-time command propagation to multiple replicas
+- Byte offset tracking for consistency verification
+- WAIT command with acknowledgment timeout for durability guarantees
+- RDB snapshot transfer for initial sync
+
+**RDB Persistence**
+- Binary file format parser compatible with Redis RDB v9
+- Length-encoded strings and integer compression
+- Millisecond/second expiry timestamp support
+- Lazy expiration on access
+
+**Pub/Sub Messaging**
+- Channel-based publisher-subscriber architecture
+- Multi-channel subscriptions per client
+- Subscribe mode isolation (restricts command execution)
+- Automatic cleanup on client disconnect
+
+**Geospatial Indexing**
+- 52-bit geohash encoding via bit interleaving
+- Coordinate validation (Web Mercator projection bounds)
+- Haversine distance calculation with Earth radius accuracy
+- Radius-based search (GEOSEARCH) with multiple units
+
+**Concurrency Model**
+- **Thread-per-connection**: Dedicated thread for each client (scalable to thousands)
+- **Mutex-protected state**: Fine-grained locking on data structures
+- **Atomic offsets**: Lock-free replication offset tracking
+- **Condition variables**: Efficient blocking for BLPOP/BRPOP without spinning
   
-- **RDB Persistence**
-  - Binary file format parser
-  - Expiry timestamp handling (milliseconds & seconds)
-  - Lazy expiration on key access
+**Network Protocol**
+- **RESP Parser**: Streaming parser for Redis Serialization Protocol
+- **Partial read handling**: Buffers incomplete messages across TCP packets
+- **Pipelining support**: Multiple commands in single TCP send
+- **TCP_NODELAY**: Disabled Nagle algorithm for low-latency replication
 
-### Advanced Features
-- **Pub/Sub Messaging**: Channel-based publish-subscribe with subscriber isolation
-- **Transactions**: MULTI/EXEC/DISCARD with command queuing
-- **Geospatial Commands**: GEOADD, GEOPOS, GEODIST, GEOSEARCH
-  - 52-bit geohash encoding using bit interleaving
-  - Haversine distance calculation
-  - Radius-based search with multiple units (m, km, mi, ft)
 
-## Technical Implementation
+## Quality & Testing
 
-### Architecture
+**8 robust test suites** with 111 integration tests:
 
-```
-├── protocol/          RESP parser and encoder
-├── storage/          In-memory data structures (strings, lists, streams, sorted sets)
-├── replication/      Master-replica synchronization
-├── rdb/             Binary file parser
-├── blocking/         Client blocking for BLPOP/BRPOP/XREAD
-├── pubsub/          Publisher-subscriber messaging
-├── geo/             Geospatial indexing and search
-└── commands/        Command handlers and routing
-```
+| Test Suite | Tests | Coverage |
+|------------|-------|----------|
+| Lists & Blocking | 10 | LPUSH, RPUSH, BLPOP, BRPOP, timeouts |
+| Transactions | 18 | MULTI/EXEC, error handling, isolation |
+| Streams | 9 | XADD, XRANGE, XREAD blocking |
+| Replication | 16 | Handshake, propagation, WAIT, recovery |
+| RDB Persistence | 17 | Loading, expiry, CONFIG GET, KEYS |
+| Pub/Sub | 17 | SUBSCRIBE, PUBLISH, multi-channel |
+| Sorted Sets | 8 | ZADD, ZRANK, ZRANGE, scoring |
+| Geo Commands | 16 | GEOADD, GEOPOS, GEODIST, GEOSEARCH |
 
-### Concurrency & Thread Safety
-- **Multi-threaded**: One thread per client connection
-- **Mutex protection**: All shared data structures protected by mutexes
-- **Atomic operations**: Replication offset tracking uses atomics
-- **Lock-free reads**: Optimized for read-heavy workloads where possible
 
-### Networking
-- **POSIX sockets**: TCP/IP networking with SO_REUSEADDR
-- **Non-blocking I/O**: select() for pub/sub message delivery
-- **Connection pooling**: Handles multiple concurrent clients
-- **TCP_NODELAY**: Low-latency replication stream
+## Build & Run
 
-### Key Algorithms
-
-**Geohashing (52-bit)**
-```cpp
-// Interleaves 26 bits of longitude and 26 bits of latitude
-// Uses binary subdivision for O(1) encoding/decoding
-long long encode_geohash(double lon, double lat);
-GeoCoordinates decode_geohash(long long hash);
-```
-
-**Haversine Distance**
-```cpp
-// Calculates great-circle distance between two points
-// Uses Earth radius = 6372797.560856m (Redis standard)
-double calculate_distance(double lon1, double lat1, double lon2, double lat2);
-```
-
-**RESP Protocol Parser**
-```cpp
-// Parses Redis wire protocol from TCP stream
-// Handles arrays, bulk strings, integers, simple strings, errors
-vector<string> parse_array_command(string& buffer);
-```
-
-## Building & Running
-
-### Build
 ```bash
+# Compile server
 g++ -std=c++17 -pthread -O2 -o Server Server_all.cpp
-```
 
-### Run as Master
-```bash
+# Run as standalone server
 ./Server --port 6379
-```
 
-### Run as Replica
-```bash
+# Run as replica
 ./Server --port 6380 --replicaof "localhost 6379"
-```
 
-### With Persistence
-```bash
+# Run with persistence
 ./Server --port 6379 --dir /tmp/redis --dbfilename dump.rdb
 ```
 
 ## Testing
 
-Comprehensive test suites covering all features:
-
 ```bash
-# Compile all tests
-g++ -std=c++17 -o test-replication tests/test_replication.cpp -pthread
-g++ -std=c++17 -o test-rdb tests/test_rdb.cpp -pthread
-g++ -std=c++17 -o test-pubsub tests/test_pubsub.cpp -pthread
-g++ -std=c++17 -o test-sorted-sets tests/test_sorted_sets.cpp -pthread
-g++ -std=c++17 -o test-geo tests/test_geo.cpp -pthread
+# Compile test suite
+make tests  # or run individual test compilations
 
-# Run tests
-./test-replication  # 16/16 tests
-./test-rdb         # 17/17 tests
-./test-pubsub      # 17/17 tests
-./test-sorted-sets # 8/8 tests
-./test-geo         # 16/16 tests
+# Run all tests (110 tests)
+./test-lists && ./test-transactions && ./test-streams && \
+./test-replication && ./test-rdb && ./test-pubsub && \
+./test-sorted-sets && ./test-geo
+
+# Or create a test runner script
+./run_all_tests.sh
 ```
 
-Total: **74 passing integration tests**
-
-## Example Usage
+## Example Session
 
 ```bash
-# Terminal 1: Start server
-./Server
+# Terminal 1: Master server
+./Server --port 6379
 
-# Terminal 2: Use redis-cli
-redis-cli SET user:1 "Alice"
-redis-cli GET user:1
+# Terminal 2: Replica server  
+./Server --port 6380 --replicaof "localhost 6379"
+
+# Terminal 3: Client operations
+$ redis-cli -p 6379
+
+# Basic operations
+> SET user:1000 "Alice"
+OK
+> GET user:1000
+"Alice"
+
+# Lists with blocking
+> BLPOP queue 5
+(blocks for 5 seconds or until data available)
 
 # Pub/Sub
-redis-cli SUBSCRIBE notifications
-# (In another terminal)
-redis-cli PUBLISH notifications "Hello World"
+> SUBSCRIBE notifications
+1) "subscribe"
+2) "notifications"  
+3) (integer) 1
 
 # Geospatial
-redis-cli GEOADD cities -0.1278 51.5074 London
-redis-cli GEOADD cities 2.2945 48.8584 Paris
-redis-cli GEODIST cities London Paris km
-# Output: 343.556
+> GEOADD cities 2.2945 48.8584 Paris -0.1278 51.5074 London
+(integer) 2
+> GEODIST cities Paris London km
+"343.556"
+> GEOSEARCH cities FROMLONLAT 0 50 BYRADIUS 500 km
+1) "London"
+2) "Paris"
+
+# Verify replication
+$ redis-cli -p 6380 GET user:1000
+"Alice"  # Data replicated!
 ```
 
-## Technical Challenges Solved
 
-1. **Protocol Parsing**: Implementing a streaming parser for RESP that handles partial reads and maintains state across TCP packets
+## Lessons Learned
 
-2. **Replication Synchronization**: Tracking byte offsets across master and replicas, handling the GETACK/ACK protocol for WAIT command guarantees
-
-3. **Blocking Operations**: Implementing client suspension and wake-up notification for BLPOP/BRPOP without busy-waiting
-
-4. **Thread Safety**: Avoiding deadlocks while maintaining consistency across concurrent operations on shared data structures
-
-5. **Geohash Algorithm**: Implementing 52-bit geohash with proper bit interleaving for spatial indexing with minimal precision loss
-
-## What I Learned
-
-- Low-level network programming with POSIX sockets
-- Binary protocol design and implementation
-- Distributed systems concepts (replication, consistency, offset tracking)
-- Multi-threaded programming with mutexes and condition variables
-- Memory-efficient data structure design for in-memory databases
-- Test-driven development for systems programming
-
-## Performance Characteristics
-
-- **Throughput**: Handles 10,000+ operations/second on single core
-- **Latency**: Sub-millisecond response time for simple operations
-- **Memory**: O(n) storage where n = total data size
-- **Scalability**: Linear scaling with number of CPU cores (one thread per client)
-
-## Project Context
-
-Built as part of the [CodeCrafters](https://codecrafters.io) "Build Your Own Redis" challenge, extending beyond the base requirements to implement additional Redis features and create comprehensive test coverage.
-
-## Technologies
-
-- **C++17**: Modern C++ with STL containers
-- **POSIX Threads**: pthread library for concurrency
-- **Sockets**: TCP/IP networking with BSD sockets API
-- **STL**: unordered_map, set, deque, vector for data structures
-
-## Future Enhancements
-
-- Persistence: Append-Only File (AOF) support
-- Clustering: Redis Cluster protocol with hash slots
-- Performance: Lock-free data structures using atomics
-- Eviction: LRU/LFU cache eviction policies
+- How TCP's stream-based nature affects application protocols
+- Why offset tracking is critical for distributed system consistency
+- The tradeoffs between different data structure implementations
+- How to debug multi-threaded race conditions with strategic logging
+- Why binary protocols are more efficient than text protocols
 
 ---
 
-*This project demonstrates proficiency in systems programming, network protocols, concurrent programming, and distributed systems design.*
+**Built as part of CodeCrafters "Build Your Own Redis" challenge**  
