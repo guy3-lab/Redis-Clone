@@ -47,3 +47,36 @@ _deps
 
 build/
 vcpkg_installed
+
+# Compiled binaries
+Server
+redis-server
+test-replication
+test-rdb
+test-pubsub
+test-sorted-sets
+test-geo
+test-*
+
+# Object files
+*.o
+*.a
+
+# Debug symbols
+*.dSYM/
+
+# IDE directories
+.vscode/
+.idea/
+.codecrafters/
+
+# System files
+.DS_Store
+
+# RDB files
+*.rdb
+
+# Temporary directories
+/tmp/
+
+wait_debug.txt

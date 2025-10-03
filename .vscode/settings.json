@@ -48,6 +48,14 @@
         "vector": "cpp",
         "algorithm": "cpp",
         "charconv": "cpp",
-        "forward_list": "cpp"
+        "forward_list": "cpp",
+        "__tree": "cpp",
+        "condition_variable": "cpp",
+        "map": "cpp",
+        "regex": "cpp",
+        "set": "cpp",
+        "chrono": "cpp",
+        "fstream": "cpp",
+        "iomanip": "cpp"
     }
 }
