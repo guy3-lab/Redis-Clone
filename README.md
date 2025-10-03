@@ -67,6 +67,15 @@ A production-grade Redis server implementation in C++17, featuring master-replic
 | Geo Commands | 16 | GEOADD, GEOPOS, GEODIST, GEOSEARCH |
 
 
+## Lessons Learned
+
+- How TCP's stream-based nature affects application protocols
+- Why offset tracking is critical for distributed system consistency
+- The tradeoffs between different data structure implementations
+- How to debug multi-threaded race conditions with strategic logging
+- Why binary protocols are more efficient than text protocols
+
+
 ## Build & Run
 
 ```bash
@@ -89,7 +98,7 @@ g++ -std=c++17 -pthread -O2 -o Server Server_all.cpp
 # Compile test suite
 make tests  # or run individual test compilations
 
-# Run all tests (110 tests)
+# Run all tests (111 tests)
 ./test-lists && ./test-transactions && ./test-streams && \
 ./test-replication && ./test-rdb && ./test-pubsub && \
 ./test-sorted-sets && ./test-geo
@@ -140,15 +149,7 @@ $ redis-cli -p 6380 GET user:1000
 "Alice"  # Data replicated!
 ```
 
-
-## Lessons Learned
-
-- How TCP's stream-based nature affects application protocols
-- Why offset tracking is critical for distributed system consistency
-- The tradeoffs between different data structure implementations
-- How to debug multi-threaded race conditions with strategic logging
-- Why binary protocols are more efficient than text protocols
-
 ---
 
 **Built as part of CodeCrafters "Build Your Own Redis" challenge**  
+
