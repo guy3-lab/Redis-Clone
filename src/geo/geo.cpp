@@ -209,7 +209,22 @@ std::string handle_geodist(const std::vector<std::string>& args) {
     // calculate haversine
     double distance = calculate_distance(coords1.longitude, coords1.latitude,
                                          coords2.longitude, coords2.latitude);
-    
+
+    // optional unit, defaults to meters (same factors as GEOSEARCH)
+    if (args.size() >= 5) {
+        std::string unit = args[4];
+        std::transform(unit.begin(), unit.end(), unit.begin(), ::tolower);
+        if (unit == "km") {
+            distance /= 1000.0;
+        } else if (unit == "mi") {
+            distance /= 1609.34;
+        } else if (unit == "ft") {
+            distance /= 0.3048;
+        } else if (unit != "m") {
+            return encode_error("ERR unsupported unit provided. please use M, KM, FT, MI");
+        }
+    }
+
     // return distance as bulk string
     return encode_bulk_string(std::to_string(distance));
 }
