@@ -11,7 +11,7 @@ std::string handle_set(const std::vector<std::string>& args) {
     }
     
     // debug logging
-    std::cerr << "DEBUG handle_set: Setting key=" << args[1] << " value=" << args[2] << std::endl;
+    debug_log << "DEBUG handle_set: Setting key=" << args[1] << " value=" << args[2] << std::endl;
     
     if (args.size() >= 5) {
         std::string px_flag = args[3];
@@ -21,12 +21,12 @@ std::string handle_set(const std::vector<std::string>& args) {
             long long final_expiry_ms = get_current_time_ms() + input_expiry_ms;
             std::lock_guard<std::mutex> lock(storage_mutex);
             storageMap[args[1]] = {args[2], final_expiry_ms};
-            std::cerr << "DEBUG handle_set: Stored with expiry" << std::endl;
+            debug_log << "DEBUG handle_set: Stored with expiry" << std::endl;
         }
     } else {
         std::lock_guard<std::mutex> lock(storage_mutex);
         storageMap[args[1]] = {args[2], 0};
-        std::cerr << "DEBUG handle_set: Stored without expiry, map size=" << storageMap.size() << std::endl;
+        debug_log << "DEBUG handle_set: Stored without expiry, map size=" << storageMap.size() << std::endl;
     }
     
     return encode_simple_string("OK");
@@ -38,30 +38,30 @@ std::string handle_get(const std::vector<std::string>& args) {
         return encode_error("ERR wrong number of arguments for 'get' command");
     }
     
-    std::cerr << "DEBUG handle_get: Getting key=" << args[1] << std::endl;
+    debug_log << "DEBUG handle_get: Getting key=" << args[1] << std::endl;
     
     std::lock_guard<std::mutex> lock(storage_mutex);
     
-    std::cerr << "DEBUG handle_get: Storage map size=" << storageMap.size() << std::endl;
-    std::cerr << "DEBUG handle_get: Key exists=" << (storageMap.count(args[1]) > 0) << std::endl;
+    debug_log << "DEBUG handle_get: Storage map size=" << storageMap.size() << std::endl;
+    debug_log << "DEBUG handle_get: Key exists=" << (storageMap.count(args[1]) > 0) << std::endl;
     
     if (storageMap.count(args[1]) > 0) {
         if (storageMap[args[1]].expiry_ms > 0) {
             if (get_current_time_ms() < storageMap[args[1]].expiry_ms) {
-                std::cerr << "DEBUG handle_get: Returning value=" << storageMap[args[1]].value << std::endl;
+                debug_log << "DEBUG handle_get: Returning value=" << storageMap[args[1]].value << std::endl;
                 return encode_bulk_string(storageMap[args[1]].value);
             } else {
-                std::cerr << "DEBUG handle_get: Key expired" << std::endl;
+                debug_log << "DEBUG handle_get: Key expired" << std::endl;
                 storageMap.erase(args[1]);
                 return "$-1\r\n";
             }
         } else {
-            std::cerr << "DEBUG handle_get: Returning value=" << storageMap[args[1]].value << std::endl;
+            debug_log << "DEBUG handle_get: Returning value=" << storageMap[args[1]].value << std::endl;
             return encode_bulk_string(storageMap[args[1]].value);
         }
     }
     
-    std::cerr << "DEBUG handle_get: Key not found" << std::endl;
+    debug_log << "DEBUG handle_get: Key not found" << std::endl;
     return "$-1\r\n";
 }
 

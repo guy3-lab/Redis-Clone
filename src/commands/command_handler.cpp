@@ -28,7 +28,7 @@ std::string execute_command(const std::vector<std::string>& message, int client_
     std::string command = message[0];
     std::transform(command.begin(), command.end(), command.begin(), ::toupper);
 
-    std::cerr << "CMD_RECV: fd=" << client_fd << " command=" << command << " from_repl=" << from_replication << "\n";
+    debug_log << "CMD_RECV: fd=" << client_fd << " command=" << command << " from_repl=" << from_replication << "\n";
     
     // basic commands
     if (command == "PING") {
@@ -272,7 +272,7 @@ void handle_client(int client_fd) {
             {
                 std::lock_guard<std::mutex> lock(replicas_mutex);
                 if (connected_replicas.count(client_fd)) {
-                    std::cerr << "DEBUG: Cleaning up replica fd=" << client_fd << std::endl;
+                    debug_log << "DEBUG: Cleaning up replica fd=" << client_fd << std::endl;
                     connected_replicas[client_fd]->active = false;
                     if (connected_replicas[client_fd]->response_thread.joinable()) {
                         connected_replicas[client_fd]->response_thread.detach();
@@ -296,7 +296,7 @@ void handle_client(int client_fd) {
             std::string command = message[0];
             std::transform(command.begin(), command.end(), command.begin(), ::toupper);
 
-            std::cerr << "CLIENT_CMD: fd=" << client_fd << " parsed command=" << command 
+            debug_log << "CLIENT_CMD: fd=" << client_fd << " parsed command=" << command 
               << " is_replica_conn=" << is_replica_connection << "\n";
 
             // check if client is in subscribe mode
@@ -316,11 +316,11 @@ void handle_client(int client_fd) {
             
             // if we're a replica connection (after PSYNC), handle responses lil diffy
             if (is_replica_connection) {
-                std::cerr << "DEBUG REPLICA MODE: Received response: " << command;
+                debug_log << "DEBUG REPLICA MODE: Received response: " << command;
                 for (size_t i = 1; i < message.size(); i++) {
-                    std::cerr << " " << message[i];
+                    debug_log << " " << message[i];
                 }
-                std::cerr << std::endl;
+                debug_log << std::endl;
                 
                 // handle REPLCONF responses (ACKs from replica)
                 if (command == "REPLCONF" && message.size() >= 3) {
@@ -330,7 +330,7 @@ void handle_client(int client_fd) {
                     if (subcmd == "ACK") {
                         // this is an ACK from the replica
                         long long ack_offset = std::stoll(message[2]);
-                        std::cerr << "ACK_RECV: fd=" << client_fd << " offset=" << ack_offset << std::endl;
+                        debug_log << "ACK_RECV: fd=" << client_fd << " offset=" << ack_offset << std::endl;
                         
                         // update the replica's ACK state
                         {
@@ -338,9 +338,9 @@ void handle_client(int client_fd) {
                             if (connected_replicas.count(client_fd)) {
                                 connected_replicas[client_fd]->ack_offset = ack_offset;
                                 connected_replicas[client_fd]->ack_received = true;
-                                std::cerr << "ACK_UPDATE: fd=" << client_fd << " updated" << std::endl;
+                                debug_log << "ACK_UPDATE: fd=" << client_fd << " updated" << std::endl;
                             } else {
-                                std::cerr << "ACK_ERROR: fd=" << client_fd << " not in connected_replicas!" << std::endl;
+                                debug_log << "ACK_ERROR: fd=" << client_fd << " not in connected_replicas!" << std::endl;
                             }
                         }
                     }
@@ -354,7 +354,7 @@ void handle_client(int client_fd) {
                     if (command == "SET" && message.size() >= 3) {
                         std::lock_guard<std::mutex> lock(storage_mutex);
                         storageMap[message[1]] = {message[2], 0};
-                        std::cerr << "DEBUG REPLICA MODE: Set key=" << message[1] << " value=" << message[2] << std::endl;
+                        debug_log << "DEBUG REPLICA MODE: Set key=" << message[1] << " value=" << message[2] << std::endl;
                     }
                     replica_bytes_processed += bytes_consumed;
                 }
@@ -376,17 +376,17 @@ void handle_client(int client_fd) {
                 
                 // mark as replica connection BUT CONTINUE handling
                 is_replica_connection = true;
-                std::cerr << "FD_TRACK: Marked fd=" << client_fd << " as replica connection" << std::endl;
+                debug_log << "FD_TRACK: Marked fd=" << client_fd << " as replica connection" << std::endl;
                 {
                     std::lock_guard<std::mutex> lock(replicas_mutex);
                     if (connected_replicas.count(client_fd)) {
-                        std::cerr << "FD_TRACK: fd=" << client_fd << " IS in connected_replicas" << std::endl;
+                        debug_log << "FD_TRACK: fd=" << client_fd << " IS in connected_replicas" << std::endl;
                     } else {
-                        std::cerr << "FD_TRACK: WARNING fd=" << client_fd << " NOT in connected_replicas!" << std::endl;
+                        debug_log << "FD_TRACK: WARNING fd=" << client_fd << " NOT in connected_replicas!" << std::endl;
                     }
                 }
                 replica_bytes_processed = 0;
-                std::cerr << "DEBUG: Client " << client_fd << " entered replica mode, continuing to handle responses" << std::endl;
+                debug_log << "DEBUG: Client " << client_fd << " entered replica mode, continuing to handle responses" << std::endl;
                 
                 // don't exit continue handling in replica mode
                 continue;

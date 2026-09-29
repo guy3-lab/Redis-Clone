@@ -14,7 +14,7 @@ bool is_client_in_subscribe_mode(int client_fd) {
 void cleanup_subscriber(int client_fd) {
     std::lock_guard<std::mutex> lock(pubsub_mutex);
     
-    std::cerr << "PUBSUB: Cleaning up subscriber fd=" << client_fd << std::endl;
+    debug_log << "PUBSUB: Cleaning up subscriber fd=" << client_fd << std::endl;
     
     // remove this client from all channels its subscribed to
     if (client_subscriptions.count(client_fd)) {
@@ -62,7 +62,7 @@ std::string handle_subscribe(const std::vector<std::string>& args, int client_fd
         response += encode_bulk_string(channel);
         response += encode_integer(subscription_count);
         
-        std::cerr << "PUBSUB: Client " << client_fd << " subscribed to '" << channel 
+        debug_log << "PUBSUB: Client " << client_fd << " subscribed to '" << channel 
                   << "', now has " << subscription_count << " subscriptions" << std::endl;
     }
     
@@ -93,7 +93,7 @@ std::string handle_publish(const std::vector<std::string>& args) {
         }
     }
     
-    std::cerr << "PUBSUB: Publishing to channel '" << channel 
+    debug_log << "PUBSUB: Publishing to channel '" << channel 
               << "' with " << subscriber_count << " subscribers" << std::endl;
     
     // send message to all subscribers
@@ -107,9 +107,9 @@ std::string handle_publish(const std::vector<std::string>& args) {
         for (int subscriber_fd : subscribers_to_notify) {
             int sent = send(subscriber_fd, notification.c_str(), notification.size(), MSG_NOSIGNAL);
             if (sent < 0) {
-                std::cerr << "PUBSUB: Failed to send to subscriber fd=" << subscriber_fd << std::endl;
+                debug_log << "PUBSUB: Failed to send to subscriber fd=" << subscriber_fd << std::endl;
             } else {
-                std::cerr << "PUBSUB: Sent message to subscriber fd=" << subscriber_fd << std::endl;
+                debug_log << "PUBSUB: Sent message to subscriber fd=" << subscriber_fd << std::endl;
             }
         }
     }

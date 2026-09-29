@@ -13,13 +13,23 @@ ReplicationConfig repl_config;
 std::mutex transaction_mutex;
 std::unordered_map<int, TransactionState> client_transactions;
 
+// no buffer attached = writes are dropped almost for free
+// synchronous logging on every command was capping throughput at ~17k ops/sec
+std::ostream debug_log(nullptr);
+
 int main(int argc, char **argv) {
     std::cout << std::unitbuf;
     std::cerr << std::unitbuf;
-    
-    std::cerr << "DEBUG MAIN: Starting with " << argc << " arguments\n";
+
+    const char* debug_env = std::getenv("REDIS_DEBUG");
+    if (debug_env && std::string(debug_env) == "1") {
+        debug_log.rdbuf(std::cerr.rdbuf());
+        debug_log << std::unitbuf;
+    }
+
+    debug_log << "DEBUG MAIN: Starting with " << argc << " arguments\n";
     for (int i = 0; i < argc; i++) {
-        std::cerr << "  arg[" << i << "]: " << argv[i] << "\n";
+        debug_log << "  arg[" << i << "]: " << argv[i] << "\n";
     }
     
     // parse command line arguments
@@ -28,39 +38,39 @@ int main(int argc, char **argv) {
         
         if (arg == "--port" && i + 1 < argc) {
             repl_config.listening_port = std::stoi(argv[++i]);
-            std::cerr << "DEBUG MAIN: Set port to " << repl_config.listening_port << "\n";
+            debug_log << "DEBUG MAIN: Set port to " << repl_config.listening_port << "\n";
         } else if (arg == "--replicaof" && i + 1 < argc) {
             std::string master_info = argv[++i];
-            std::cerr << "DEBUG MAIN: Got --replicaof with: " << master_info << "\n";
+            debug_log << "DEBUG MAIN: Got --replicaof with: " << master_info << "\n";
             size_t space_pos = master_info.find(' ');
             if (space_pos != std::string::npos) {
                 repl_config.master_host = master_info.substr(0, space_pos);
                 repl_config.master_port = std::stoi(master_info.substr(space_pos + 1));
                 repl_config.is_replica = true;
-                std::cerr << "DEBUG MAIN: Configured as replica of " 
+                debug_log << "DEBUG MAIN: Configured as replica of " 
                           << repl_config.master_host << ":" << repl_config.master_port << "\n";
             } else {
-                std::cerr << "DEBUG MAIN: ERROR - Invalid replicaof format, no space found\n";
+                debug_log << "DEBUG MAIN: ERROR - Invalid replicaof format, no space found\n";
             }
         } else if (arg == "--dir" && i + 1 < argc) {
             rdb_config.dir = argv[++i];
-            std::cerr << "DEBUG MAIN: Set dir to " << rdb_config.dir << "\n";
+            debug_log << "DEBUG MAIN: Set dir to " << rdb_config.dir << "\n";
         } else if (arg == "--dbfilename" && i + 1 < argc) {
             rdb_config.dbfilename = argv[++i];
-            std::cerr << "DEBUG MAIN: Set dbfilename to " << rdb_config.dbfilename << "\n";
+            debug_log << "DEBUG MAIN: Set dbfilename to " << rdb_config.dbfilename << "\n";
         }
     }
     
-    std::cerr << "DEBUG MAIN: is_replica = " << repl_config.is_replica << "\n";
+    debug_log << "DEBUG MAIN: is_replica = " << repl_config.is_replica << "\n";
     
     // load RDB file if coonfiged
     if (!rdb_config.dir.empty() && !rdb_config.dbfilename.empty()) {
-        std::cerr << "DEBUG MAIN: Loading RDB file from " << rdb_config.dir << "/" << rdb_config.dbfilename << "\n";
+        debug_log << "DEBUG MAIN: Loading RDB file from " << rdb_config.dir << "/" << rdb_config.dbfilename << "\n";
         if (!load_rdb_file()) {
             std::cerr << "WARNING: Failed to load RDB file, starting with empty database\n";
         }
     } else {
-        std::cerr << "DEBUG MAIN: No RDB configuration, starting with empty database\n";
+        debug_log << "DEBUG MAIN: No RDB configuration, starting with empty database\n";
     }
     
     // setup server socket FIRST
@@ -102,12 +112,12 @@ int main(int argc, char **argv) {
         repl_config.replication_id = generate_random_string(40);
         repl_config.replication_offset = 0;
         repl_config.last_write_offset = 0;
-        std::cerr << "DEBUG MAIN: Initialized as master with ID " << repl_config.replication_id << "\n";
+        debug_log << "DEBUG MAIN: Initialized as master with ID " << repl_config.replication_id << "\n";
     } else {
         // start replica connection in background thread
-        std::cerr << "DEBUG MAIN: Starting replica connection thread\n";
+        debug_log << "DEBUG MAIN: Starting replica connection thread\n";
         std::thread replica_thread([]() {
-            std::cerr << "DEBUG REPLICA THREAD: Thread started, will connect to " 
+            debug_log << "DEBUG REPLICA THREAD: Thread started, will connect to " 
                       << repl_config.master_host << ":" << repl_config.master_port << "\n";
             
             // small delay to make sure server is ready
@@ -115,19 +125,19 @@ int main(int argc, char **argv) {
             
             int attempts = 0;
             while (true) {
-                std::cerr << "DEBUG REPLICA THREAD: Connection attempt " << ++attempts << "\n";
+                debug_log << "DEBUG REPLICA THREAD: Connection attempt " << ++attempts << "\n";
                 if (connect_to_master()) {
-                    std::cerr << "DEBUG REPLICA THREAD: Connected successfully, starting stream processing\n";
+                    debug_log << "DEBUG REPLICA THREAD: Connected successfully, starting stream processing\n";
                     process_replication_stream();
-                    std::cerr << "DEBUG REPLICA THREAD: Stream processing ended, will reconnect\n";
+                    debug_log << "DEBUG REPLICA THREAD: Stream processing ended, will reconnect\n";
                 } else {
-                    std::cerr << "DEBUG REPLICA THREAD: Connection failed, waiting 1s before retry\n";
+                    debug_log << "DEBUG REPLICA THREAD: Connection failed, waiting 1s before retry\n";
                 }
                 std::this_thread::sleep_for(std::chrono::seconds(1));
             }
         });
         replica_thread.detach();
-        std::cerr << "DEBUG MAIN: Replica thread detached\n";
+        debug_log << "DEBUG MAIN: Replica thread detached\n";
     }
     
     // start background threads

@@ -83,12 +83,12 @@ std::pair<std::string, long long> parse_string_encoding(const unsigned char* dat
 bool load_rdb_file() {
     std::string filepath = rdb_config.dir + "/" + rdb_config.dbfilename;
     
-    std::cerr << "DEBUG RDB: Attempting to load RDB from " << filepath << std::endl;
+    debug_log << "DEBUG RDB: Attempting to load RDB from " << filepath << std::endl;
     
     // check if file exists
     std::ifstream file(filepath, std::ios::binary);
     if (!file) {
-        std::cerr << "DEBUG RDB: File does not exist, starting with empty database" << std::endl;
+        debug_log << "DEBUG RDB: File does not exist, starting with empty database" << std::endl;
         return true;  // not an error just empty database
     }
     
@@ -101,24 +101,24 @@ bool load_rdb_file() {
     file.read(reinterpret_cast<char*>(data.data()), file_size);
     file.close();
     
-    std::cerr << "DEBUG RDB: Loaded " << file_size << " bytes from RDB file" << std::endl;
+    debug_log << "DEBUG RDB: Loaded " << file_size << " bytes from RDB file" << std::endl;
     
     size_t pos = 0;
     
     // parse header
     if (pos + 9 > file_size) {
-        std::cerr << "DEBUG RDB: File too small for header" << std::endl;
+        debug_log << "DEBUG RDB: File too small for header" << std::endl;
         return false;
     }
     
     std::string magic(reinterpret_cast<const char*>(data.data()), 5);
     if (magic != "REDIS") {
-        std::cerr << "DEBUG RDB: Invalid magic string: " << magic << std::endl;
+        debug_log << "DEBUG RDB: Invalid magic string: " << magic << std::endl;
         return false;
     }
     
     std::string version(reinterpret_cast<const char*>(data.data() + 5), 4);
-    std::cerr << "DEBUG RDB: Version " << version << std::endl;
+    debug_log << "DEBUG RDB: Version " << version << std::endl;
     pos = 9;
     
     // parse metadata and database sections
@@ -131,23 +131,23 @@ bool load_rdb_file() {
         
         if (op_code == 0xFF) {
             // eof
-            std::cerr << "DEBUG RDB: Reached end of file marker" << std::endl;
+            debug_log << "DEBUG RDB: Reached end of file marker" << std::endl;
             break;
         } else if (op_code == 0xFE) {
             // database selector
             long long db_index = parse_length_encoding(data.data(), pos, file_size);
-            std::cerr << "DEBUG RDB: Database index " << db_index << std::endl;
+            debug_log << "DEBUG RDB: Database index " << db_index << std::endl;
         } else if (op_code == 0xFB) {
             // hash table size information
             long long hash_table_size = parse_length_encoding(data.data(), pos, file_size);
             long long expire_hash_table_size = parse_length_encoding(data.data(), pos, file_size);
-            std::cerr << "DEBUG RDB: Hash table size=" << hash_table_size 
+            debug_log << "DEBUG RDB: Hash table size=" << hash_table_size 
                       << ", expire size=" << expire_hash_table_size << std::endl;
         } else if (op_code == 0xFA) {
             // metadata
             auto [name, _] = parse_string_encoding(data.data(), pos, file_size);
             auto [value, __] = parse_string_encoding(data.data(), pos, file_size);
-            std::cerr << "DEBUG RDB: Metadata " << name << "=" << value << std::endl;
+            debug_log << "DEBUG RDB: Metadata " << name << "=" << value << std::endl;
         } else if (op_code == 0xFC || op_code == 0xFD) {
             // key-val pair with expiry
             long long expiry_ms = 0;
@@ -184,10 +184,10 @@ bool load_rdb_file() {
                 if (expiry_ms > current_time_ms) {
                     std::lock_guard<std::mutex> lock(storage_mutex);
                     storageMap[key] = {value, expiry_ms};
-                    std::cerr << "DEBUG RDB: Loaded key=" << key << " value=" << value 
+                    debug_log << "DEBUG RDB: Loaded key=" << key << " value=" << value 
                               << " expiry=" << expiry_ms << std::endl;
                 } else {
-                    std::cerr << "DEBUG RDB: Skipped expired key=" << key << std::endl;
+                    debug_log << "DEBUG RDB: Skipped expired key=" << key << std::endl;
                 }
             }
         } else if (op_code == 0x00) {
@@ -201,16 +201,16 @@ bool load_rdb_file() {
             
             std::lock_guard<std::mutex> lock(storage_mutex);
             storageMap[key] = {value, 0};  // means no expiry
-            std::cerr << "DEBUG RDB: Loaded key=" << key << " value=" << value 
+            debug_log << "DEBUG RDB: Loaded key=" << key << " value=" << value 
                       << " (no expiry)" << std::endl;
         } else {
             // other value types not supported in this stage
-            std::cerr << "DEBUG RDB: Skipping unsupported op_code " << (int)op_code << std::endl;
+            debug_log << "DEBUG RDB: Skipping unsupported op_code " << (int)op_code << std::endl;
             break;
         }
     }
     
     std::lock_guard<std::mutex> lock(storage_mutex);
-    std::cerr << "DEBUG RDB: Finished loading RDB file, total keys: " << storageMap.size() << std::endl;
+    debug_log << "DEBUG RDB: Finished loading RDB file, total keys: " << storageMap.size() << std::endl;
     return true;
 }

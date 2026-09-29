@@ -22,25 +22,25 @@ bool validate_coordinates(double longitude, double latitude, std::string& error_
 
 // Encode longitude and latitude to geohash (52-bit)
 long long encode_geohash(double longitude, double latitude) {
-    std::cerr << "\n=== GEOHASH ENCODE START ===" << std::endl;
-    std::cerr << "GEOHASH_INPUT: lon=" << longitude << " lat=" << latitude << std::endl;
+    debug_log << "\n=== GEOHASH ENCODE START ===" << std::endl;
+    debug_log << "GEOHASH_INPUT: lon=" << longitude << " lat=" << latitude << std::endl;
     
     double lat_offset = (latitude - GEO_LAT_MIN);
     double lon_offset = (longitude - GEO_LON_MIN);
     
-    std::cerr << "GEOHASH_OFFSET: lon_offset=" << lon_offset << " lat_offset=" << lat_offset << std::endl;
+    debug_log << "GEOHASH_OFFSET: lon_offset=" << lon_offset << " lat_offset=" << lat_offset << std::endl;
     
     // normalize
     lat_offset /= (GEO_LAT_MAX - GEO_LAT_MIN);
     lon_offset /= (GEO_LON_MAX - GEO_LON_MIN);
     
-    std::cerr << "GEOHASH_NORMALIZED: lon=" << lon_offset << " lat=" << lat_offset << std::endl;
+    debug_log << "GEOHASH_NORMALIZED: lon=" << lon_offset << " lat=" << lat_offset << std::endl;
     
     // convert to 52 bit geohash
     long long lat_int = (long long)(lat_offset * (1LL << 26));
     long long lon_int = (long long)(lon_offset * (1LL << 26));
     
-    std::cerr << "GEOHASH_INT: lon_int=" << lon_int << " lat_int=" << lat_int << std::endl;
+    debug_log << "GEOHASH_INT: lon_int=" << lon_int << " lat_int=" << lat_int << std::endl;
     
     // clamp to 26 bits
     if (lat_int >= (1LL << 26)) lat_int = (1LL << 26) - 1;
@@ -56,10 +56,10 @@ long long encode_geohash(double longitude, double latitude) {
         geohash |= (lat_int >> i) & 1;
     }
     
-    std::cerr << "GEOHASH_OUTPUT: hash=" << geohash << std::endl;
-    std::cerr << "GEOHASH_EXPECTED (London): 3662244577883556" << std::endl;
-    std::cerr << "GEOHASH_EXPECTED (Paris): 3663832614298053" << std::endl;
-    std::cerr << "=== GEOHASH ENCODE END ===\n" << std::endl;
+    debug_log << "GEOHASH_OUTPUT: hash=" << geohash << std::endl;
+    debug_log << "GEOHASH_EXPECTED (London): 3662244577883556" << std::endl;
+    debug_log << "GEOHASH_EXPECTED (Paris): 3663832614298053" << std::endl;
+    debug_log << "=== GEOHASH ENCODE END ===\n" << std::endl;
     
     return geohash;
 }

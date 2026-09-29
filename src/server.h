@@ -28,4 +28,7 @@
 #include <netinet/tcp.h>
 #include <memory>
 
+// debug tracing, silent unless REDIS_DEBUG=1 (defined in main.cpp)
+extern std::ostream debug_log;
+
 #endif

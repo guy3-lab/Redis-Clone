@@ -21,7 +21,7 @@ std::mutex replicas_mutex;
 void process_replica_responses(int replica_fd) {
     // this thread is no longer needed since handle_client handles everything
     // but we keep it for compatibility so just make it do nothing
-    std::cerr << "DEBUG process_replica_responses: Started for fd=" << replica_fd 
+    debug_log << "DEBUG process_replica_responses: Started for fd=" << replica_fd 
               << " (now handled by handle_client)" << std::endl;
     
     // just sleep until the replica disconnects
@@ -34,7 +34,7 @@ void process_replica_responses(int replica_fd) {
         }
     }
     
-    std::cerr << "DEBUG process_replica_responses: Exiting for fd=" << replica_fd << std::endl;
+    debug_log << "DEBUG process_replica_responses: Exiting for fd=" << replica_fd << std::endl;
 }
 
 std::string handle_psync(int client_fd, const std::vector<std::string>& message) {
@@ -42,27 +42,27 @@ std::string handle_psync(int client_fd, const std::vector<std::string>& message)
         return encode_error("ERR wrong number of arguments for 'psync' command");
     }
     
-    std::cerr << "DEBUG handle_psync: Starting for client_fd=" << client_fd << std::endl;
+    debug_log << "DEBUG handle_psync: Starting for client_fd=" << client_fd << std::endl;
     
     // check how many replicas we already have
     {
         std::lock_guard<std::mutex> lock(replicas_mutex);
-        std::cerr << "DEBUG handle_psync: Currently have " << connected_replicas.size() << " replicas" << std::endl;
+        debug_log << "DEBUG handle_psync: Currently have " << connected_replicas.size() << " replicas" << std::endl;
         for (const auto& [fd, replica] : connected_replicas) {
-            std::cerr << "  Replica fd=" << fd << ", active=" << replica->active << std::endl;
+            debug_log << "  Replica fd=" << fd << ", active=" << replica->active << std::endl;
         }
     }
     
     // send FULLRESYNC response
     std::string fullresync = "+FULLRESYNC " + repl_config.replication_id + " 0\r\n";
     send(client_fd, fullresync.c_str(), fullresync.size(), 0);
-    std::cerr << "DEBUG handle_psync: Sent FULLRESYNC" << std::endl;
+    debug_log << "DEBUG handle_psync: Sent FULLRESYNC" << std::endl;
     
     // send RDB file
     std::string rdb_data(reinterpret_cast<const char*>(empty_rdb_hex), sizeof(empty_rdb_hex));
     std::string rdb_response = "$" + std::to_string(rdb_data.size()) + "\r\n" + rdb_data;
     send(client_fd, rdb_response.c_str(), rdb_response.size(), 0);
-    std::cerr << "DEBUG handle_psync: Sent RDB file" << std::endl;
+    debug_log << "DEBUG handle_psync: Sent RDB file" << std::endl;
     
     // enable TCP_NODELAY for low latency
     int flag = 1;
@@ -74,7 +74,7 @@ std::string handle_psync(int client_fd, const std::vector<std::string>& message)
         
         // check if this fd is already in the map, shouldnt be
         if (connected_replicas.count(client_fd)) {
-            std::cerr << "DEBUG handle_psync: WARNING - client_fd " << client_fd 
+            debug_log << "DEBUG handle_psync: WARNING - client_fd " << client_fd 
                       << " already in connected_replicas!" << std::endl;
         }
         
@@ -92,9 +92,9 @@ std::string handle_psync(int client_fd, const std::vector<std::string>& message)
         replica->response_thread = std::thread(process_replica_responses, client_fd);
         
         connected_replicas[client_fd] = std::move(replica);
-        std::cerr << "PSYNC_TRACK: Added fd=" << client_fd << " to connected_replicas" << std::endl;
-        std::cerr << "PSYNC_TRACK: Total replicas now: " << connected_replicas.size() << std::endl;
-        std::cerr << "DEBUG handle_psync: Added replica to connected list, now have " 
+        debug_log << "PSYNC_TRACK: Added fd=" << client_fd << " to connected_replicas" << std::endl;
+        debug_log << "PSYNC_TRACK: Total replicas now: " << connected_replicas.size() << std::endl;
+        debug_log << "DEBUG handle_psync: Added replica to connected list, now have " 
                   << connected_replicas.size() << " replicas" << std::endl;
     }
     
@@ -104,7 +104,7 @@ std::string handle_psync(int client_fd, const std::vector<std::string>& message)
 
 
 std::string handle_wait(const std::vector<std::string>& message) {
-    std::cerr << "\n=== WAIT COMMAND START ===" << std::endl;
+    debug_log << "\n=== WAIT COMMAND START ===" << std::endl;
     
     if (message.size() < 3) {
         return encode_error("ERR wrong number of arguments for 'wait' command");
@@ -113,16 +113,16 @@ std::string handle_wait(const std::vector<std::string>& message) {
     int num_replicas_needed = std::stoi(message[1]);
     int timeout_ms = std::stoi(message[2]);
     
-    std::cerr << "WAIT_PARAMS: num_needed=" << num_replicas_needed 
+    debug_log << "WAIT_PARAMS: num_needed=" << num_replicas_needed 
               << " timeout=" << timeout_ms << "ms" << std::endl;
     
     // count total replicas
     int total_replicas = 0;
     {
         std::lock_guard<std::mutex> lock(replicas_mutex);
-        std::cerr << "WAIT_REPLICAS: Checking " << connected_replicas.size() << " connections" << std::endl;
+        debug_log << "WAIT_REPLICAS: Checking " << connected_replicas.size() << " connections" << std::endl;
         for (const auto& [fd, replica] : connected_replicas) {
-            std::cerr << "  fd=" << fd 
+            debug_log << "  fd=" << fd 
                       << " active=" << replica->active
                       << " ack_offset=" << replica->ack_offset
                       << " ack_received=" << replica->ack_received << std::endl;
@@ -132,10 +132,10 @@ std::string handle_wait(const std::vector<std::string>& message) {
         }
     }
     
-    std::cerr << "WAIT_COUNT: " << total_replicas << " active replicas" << std::endl;
+    debug_log << "WAIT_COUNT: " << total_replicas << " active replicas" << std::endl;
     
     if (total_replicas == 0) {
-        std::cerr << "WAIT_RETURN: 0 (no replicas)" << std::endl;
+        debug_log << "WAIT_RETURN: 0 (no replicas)" << std::endl;
         return encode_integer(0);
     }
     
@@ -143,12 +143,12 @@ std::string handle_wait(const std::vector<std::string>& message) {
     long long repl_offset = repl_config.replication_offset.load();
     long long last_write = repl_config.last_write_offset.load();
     
-    std::cerr << "WAIT_OFFSETS: replication_offset=" << repl_offset 
+    debug_log << "WAIT_OFFSETS: replication_offset=" << repl_offset 
               << " last_write_offset=" << last_write << std::endl;
     
     // if no writes, all replicas are in sync
     if (last_write == 0) {
-        std::cerr << "WAIT_RETURN: " << std::min(num_replicas_needed, total_replicas) 
+        debug_log << "WAIT_RETURN: " << std::min(num_replicas_needed, total_replicas) 
                   << " (no writes, all in sync)" << std::endl;
         return encode_integer(total_replicas);
     }
@@ -157,7 +157,7 @@ std::string handle_wait(const std::vector<std::string>& message) {
     std::vector<std::string> getack_cmd = {"REPLCONF", "GETACK", "*"};
     std::string getack_resp = encode_as_resp_array(getack_cmd);
     
-    std::cerr << "WAIT_GETACK: Sending GETACK to replicas" << std::endl;
+    debug_log << "WAIT_GETACK: Sending GETACK to replicas" << std::endl;
     
     {
         std::lock_guard<std::mutex> lock(replicas_mutex);
@@ -165,7 +165,7 @@ std::string handle_wait(const std::vector<std::string>& message) {
             if (replica->active) {
                 replica->ack_received = false;
                 int sent = send(fd, getack_resp.c_str(), getack_resp.size(), MSG_NOSIGNAL);
-                std::cerr << "WAIT_GETACK: Sent to fd=" << fd 
+                debug_log << "WAIT_GETACK: Sent to fd=" << fd 
                           << " bytes=" << sent << std::endl;
             }
         }
@@ -184,14 +184,14 @@ std::string handle_wait(const std::vector<std::string>& message) {
             acked_count = 0;
             
             if (loop_iterations % 50 == 1) {  // log every 50 iterations
-                std::cerr << "WAIT_LOOP: iteration=" << loop_iterations << std::endl;
+                debug_log << "WAIT_LOOP: iteration=" << loop_iterations << std::endl;
             }
             
             for (const auto& [fd, replica] : connected_replicas) {
                 if (!replica->active) continue;
                 
                 if (loop_iterations % 50 == 1) {
-                    std::cerr << "  fd=" << fd 
+                    debug_log << "  fd=" << fd 
                               << " ack_received=" << replica->ack_received
                               << " ack_offset=" << replica->ack_offset 
                               << " (need >= " << last_write << ")" << std::endl;
@@ -208,21 +208,21 @@ std::string handle_wait(const std::vector<std::string>& message) {
         
         // success condition: enough replicas have acknowledged
         if (acked_count >= num_replicas_needed) {
-            std::cerr << "WAIT_SUCCESS: Got " << acked_count << " ACKs (needed " 
+            debug_log << "WAIT_SUCCESS: Got " << acked_count << " ACKs (needed " 
                       << num_replicas_needed << ")" << std::endl;
             break;
         }
         
         // also break if all replicas have acknowledged
         if (acked_count >= total_replicas) {
-            std::cerr << "WAIT_SUCCESS: All " << total_replicas << " replicas ACKed" << std::endl;
+            debug_log << "WAIT_SUCCESS: All " << total_replicas << " replicas ACKed" << std::endl;
             break;
         }
         
         // timeout check
         long long elapsed = get_current_time_ms() - start_time;
         if (timeout_ms > 0 && elapsed >= timeout_ms) {
-            std::cerr << "WAIT_TIMEOUT: After " << elapsed << "ms with " 
+            debug_log << "WAIT_TIMEOUT: After " << elapsed << "ms with " 
                       << acked_count << " ACKs" << std::endl;
             break;
         }
@@ -231,9 +231,9 @@ std::string handle_wait(const std::vector<std::string>& message) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     
-    std::cerr << "WAIT_RETURN: " << acked_count << " (out of " << total_replicas 
+    debug_log << "WAIT_RETURN: " << acked_count << " (out of " << total_replicas 
               << " replicas)" << std::endl;
-    std::cerr << "=== WAIT COMMAND END ===" << std::endl;
+    debug_log << "=== WAIT COMMAND END ===" << std::endl;
     
     return encode_integer(acked_count);
 }
@@ -242,15 +242,15 @@ std::string handle_wait(const std::vector<std::string>& message) {
 void propagate_to_replicas(const std::vector<std::string>& command) {
     std::string encoded = encode_as_resp_array(command);
     
-    std::cerr << "DEBUG PROPAGATE: Propagating command: ";
+    debug_log << "DEBUG PROPAGATE: Propagating command: ";
     for (const auto& arg : command) {
-        std::cerr << arg << " ";
+        debug_log << arg << " ";
     }
-    std::cerr << "\n";
+    debug_log << "\n";
     
     std::lock_guard<std::mutex> lock(replicas_mutex);
     
-    std::cerr << "DEBUG PROPAGATE: Sending to " << connected_replicas.size() << " replicas\n";
+    debug_log << "DEBUG PROPAGATE: Sending to " << connected_replicas.size() << " replicas\n";
     
     // send to all active replicas
     int sent_count = 0;
@@ -258,11 +258,11 @@ void propagate_to_replicas(const std::vector<std::string>& command) {
         if (it->second->active) {
             int result = send(it->first, encoded.c_str(), encoded.size(), MSG_NOSIGNAL);
             if (result < 0) {
-                std::cerr << "DEBUG PROPAGATE: Failed to send to replica fd=" << it->first << "\n";
+                debug_log << "DEBUG PROPAGATE: Failed to send to replica fd=" << it->first << "\n";
                 it->second->active = false;
                 ++it;
             } else {
-                std::cerr << "DEBUG PROPAGATE: Sent " << result << " bytes to replica fd=" << it->first << "\n";
+                debug_log << "DEBUG PROPAGATE: Sent " << result << " bytes to replica fd=" << it->first << "\n";
                 sent_count++;
                 // again enable TCP_NODELAY for low latency
                 int flag = 1;
@@ -279,7 +279,7 @@ void propagate_to_replicas(const std::vector<std::string>& command) {
     repl_config.replication_offset += encoded.size();
     repl_config.last_write_offset = repl_config.replication_offset.load();
     
-    std::cerr << "DEBUG PROPAGATE: Sent to " << sent_count << " replicas, "
+    debug_log << "DEBUG PROPAGATE: Sent to " << sent_count << " replicas, "
               << "offset updated from " << old_offset << " to " << repl_config.replication_offset.load() << "\n";
 }
 
@@ -291,7 +291,7 @@ void send_getack_to_replica(int replica_fd) {
     
     int result = send(replica_fd, getack_resp.c_str(), getack_resp.size(), MSG_NOSIGNAL);
     if (result > 0) {
-        std::cerr << "DEBUG: Sent GETACK to replica fd=" << replica_fd << std::endl;
+        debug_log << "DEBUG: Sent GETACK to replica fd=" << replica_fd << std::endl;
         // update replication offset for this command
         repl_config.replication_offset += getack_resp.size();
     }
@@ -307,16 +307,16 @@ std::string handle_info_replication() {
         int slave_count = 0;
         {
             std::lock_guard<std::mutex> lock(replicas_mutex);
-            std::cerr << "DEBUG INFO: Checking " << connected_replicas.size() << " replicas" << std::endl;
+            debug_log << "DEBUG INFO: Checking " << connected_replicas.size() << " replicas" << std::endl;
             for (const auto& [fd, replica] : connected_replicas) {
-                std::cerr << "DEBUG INFO: Replica fd=" << fd << ", active=" << replica->active << std::endl;
+                debug_log << "DEBUG INFO: Replica fd=" << fd << ", active=" << replica->active << std::endl;
                 if (replica->active) {
                     slave_count++;
                 }
             }
         }
         
-        std::cerr << "DEBUG INFO: Reporting " << slave_count << " connected slaves" << std::endl;
+        debug_log << "DEBUG INFO: Reporting " << slave_count << " connected slaves" << std::endl;
         
         info_content = "role:master\r\n";
         info_content += "connected_slaves:" + std::to_string(slave_count) + "\r\n";
@@ -329,32 +329,32 @@ std::string handle_info_replication() {
 
 // this was purely to check if replconf is being called
 std::string handle_replconf(const std::vector<std::string>& message, bool is_replica) {
-    std::cerr << "DEBUG handle_replconf: called with " << message.size() << " args, is_replica=" << is_replica << std::endl;
+    debug_log << "DEBUG handle_replconf: called with " << message.size() << " args, is_replica=" << is_replica << std::endl;
     for (size_t i = 0; i < message.size(); i++) {
-        std::cerr << "  arg[" << i << "]: " << message[i] << std::endl;
+        debug_log << "  arg[" << i << "]: " << message[i] << std::endl;
     }
     
     if (message.size() < 3) {
-        std::cerr << "DEBUG handle_replconf: returning error - wrong number of arguments" << std::endl;
+        debug_log << "DEBUG handle_replconf: returning error - wrong number of arguments" << std::endl;
         return encode_error("ERR wrong number of arguments");
     }
     
     std::string subcommand = message[1];
     std::transform(subcommand.begin(), subcommand.end(), subcommand.begin(), ::tolower);
-    std::cerr << "DEBUG handle_replconf: subcommand=" << subcommand << std::endl;
+    debug_log << "DEBUG handle_replconf: subcommand=" << subcommand << std::endl;
     
     if (subcommand == "listening-port" || subcommand == "capa") {
-        std::cerr << "DEBUG handle_replconf: returning OK for " << subcommand << std::endl;
+        debug_log << "DEBUG handle_replconf: returning OK for " << subcommand << std::endl;
         return encode_simple_string("OK");
     } else if (subcommand == "getack" && is_replica) {
-        std::cerr << "DEBUG handle_replconf: GETACK received in normal command handler (shouldn't happen!)" << std::endl;
+        debug_log << "DEBUG handle_replconf: GETACK received in normal command handler (shouldn't happen!)" << std::endl;
         long long offset = replica_offset.load();
         std::vector<std::string> ack_response = {"REPLCONF", "ACK", std::to_string(offset)};
         auto response = encode_as_resp_array(ack_response);
-        std::cerr << "DEBUG handle_replconf: sending ACK with offset=" << offset << std::endl;
+        debug_log << "DEBUG handle_replconf: sending ACK with offset=" << offset << std::endl;
         return response;
     }
     
-    std::cerr << "DEBUG handle_replconf: returning default OK" << std::endl;
+    debug_log << "DEBUG handle_replconf: returning default OK" << std::endl;
     return encode_simple_string("OK");
 }
