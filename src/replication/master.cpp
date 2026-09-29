@@ -17,6 +17,7 @@ const unsigned char empty_rdb_hex[] = {
 
 std::map<int, std::unique_ptr<ConnectedReplica>> connected_replicas;
 std::mutex replicas_mutex;
+std::condition_variable ack_cv;
 
 void process_replica_responses(int replica_fd) {
     // this thread is no longer needed since handle_client handles everything
@@ -156,82 +157,42 @@ std::string handle_wait(const std::vector<std::string>& message) {
     // send REPLCONF GETACK to all replicas
     std::vector<std::string> getack_cmd = {"REPLCONF", "GETACK", "*"};
     std::string getack_resp = encode_as_resp_array(getack_cmd);
-    
+
     debug_log << "WAIT_GETACK: Sending GETACK to replicas" << std::endl;
-    
-    {
-        std::lock_guard<std::mutex> lock(replicas_mutex);
+
+    std::unique_lock<std::mutex> lock(replicas_mutex);
+    for (const auto& [fd, replica] : connected_replicas) {
+        if (replica->active) {
+            replica->ack_received = false;
+            int sent = send(fd, getack_resp.c_str(), getack_resp.size(), MSG_NOSIGNAL);
+            debug_log << "WAIT_GETACK: Sent to fd=" << fd
+                      << " bytes=" << sent << std::endl;
+        }
+    }
+
+    // a replica counts once it has ACKed an offset at or past the last write
+    auto count_acked = [&] {
+        int acked = 0;
         for (const auto& [fd, replica] : connected_replicas) {
-            if (replica->active) {
-                replica->ack_received = false;
-                int sent = send(fd, getack_resp.c_str(), getack_resp.size(), MSG_NOSIGNAL);
-                debug_log << "WAIT_GETACK: Sent to fd=" << fd 
-                          << " bytes=" << sent << std::endl;
+            if (replica->active && replica->ack_received && replica->ack_offset >= last_write) {
+                acked++;
             }
         }
+        return acked;
+    };
+
+    // sleep until enough replicas ACK or the timeout hits (0 = wait forever)
+    // the ACK handler in handle_client notifies ack_cv, and waiting releases replicas_mutex so it can get in
+    int target = std::min(num_replicas_needed, total_replicas);
+    auto enough_acked = [&] { return count_acked() >= target; };
+    if (timeout_ms > 0) {
+        ack_cv.wait_for(lock, std::chrono::milliseconds(timeout_ms), enough_acked);
+    } else {
+        ack_cv.wait(lock, enough_acked);
     }
-    
-    // wait for ACKs with proper timeout
-    auto start_time = get_current_time_ms();
-    int acked_count = 0;
-    int loop_iterations = 0;
-    
-    while (true) {
-        loop_iterations++;
-        
-        {
-            std::lock_guard<std::mutex> lock(replicas_mutex);
-            acked_count = 0;
-            
-            if (loop_iterations % 50 == 1) {  // log every 50 iterations
-                debug_log << "WAIT_LOOP: iteration=" << loop_iterations << std::endl;
-            }
-            
-            for (const auto& [fd, replica] : connected_replicas) {
-                if (!replica->active) continue;
-                
-                if (loop_iterations % 50 == 1) {
-                    debug_log << "  fd=" << fd 
-                              << " ack_received=" << replica->ack_received
-                              << " ack_offset=" << replica->ack_offset 
-                              << " (need >= " << last_write << ")" << std::endl;
-                }
-                
-                // check if this replica has acknowledged
-                if (replica->ack_received && replica->ack_offset >= last_write) {
-                    acked_count++;
-                } else if (replica->ack_received && replica->ack_offset == 0 && last_write == 0) {
-                    acked_count++;
-                }
-            }
-        }
-        
-        // success condition: enough replicas have acknowledged
-        if (acked_count >= num_replicas_needed) {
-            debug_log << "WAIT_SUCCESS: Got " << acked_count << " ACKs (needed " 
-                      << num_replicas_needed << ")" << std::endl;
-            break;
-        }
-        
-        // also break if all replicas have acknowledged
-        if (acked_count >= total_replicas) {
-            debug_log << "WAIT_SUCCESS: All " << total_replicas << " replicas ACKed" << std::endl;
-            break;
-        }
-        
-        // timeout check
-        long long elapsed = get_current_time_ms() - start_time;
-        if (timeout_ms > 0 && elapsed >= timeout_ms) {
-            debug_log << "WAIT_TIMEOUT: After " << elapsed << "ms with " 
-                      << acked_count << " ACKs" << std::endl;
-            break;
-        }
-        
-        // small sleep to avoid useless waiting
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
-    
-    debug_log << "WAIT_RETURN: " << acked_count << " (out of " << total_replicas 
+    int acked_count = count_acked();
+
+    debug_log << "WAIT_RETURN: " << acked_count << " (out of " << total_replicas
               << " replicas)" << std::endl;
     debug_log << "=== WAIT COMMAND END ===" << std::endl;
     

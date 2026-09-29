@@ -27,6 +27,8 @@ struct ConnectedReplica {
 extern ReplicationConfig repl_config;
 extern std::mutex replicas_mutex;
 extern std::map<int, std::unique_ptr<ConnectedReplica>> connected_replicas;
+// notified whenever a replica ACK updates ack_offset (guarded by replicas_mutex)
+extern std::condition_variable ack_cv;
 extern int master_connection_fd;
 extern std::mutex master_conn_mutex;
 extern std::atomic<long long> replica_offset;

@@ -333,6 +333,7 @@ void handle_client(int client_fd) {
                             if (connected_replicas.count(client_fd)) {
                                 connected_replicas[client_fd]->ack_offset = ack_offset;
                                 connected_replicas[client_fd]->ack_received = true;
+                                ack_cv.notify_all();
                                 debug_log << "ACK_UPDATE: fd=" << client_fd << " updated" << std::endl;
                             } else {
                                 debug_log << "ACK_ERROR: fd=" << client_fd << " not in connected_replicas!" << std::endl;

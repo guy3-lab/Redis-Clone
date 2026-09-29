@@ -17,7 +17,7 @@ A Redis-compatible server written in C++17, featuring master-replica replication
 - Full handshake protocol (PING, REPLCONF, PSYNC)
 - Live command propagation to multiple replicas
 - Byte offset tracking on master and replicas
-- WAIT: sends `REPLCONF GETACK` and counts replicas whose acknowledged offset has reached the last write, with a timeout
+- WAIT: sends `REPLCONF GETACK`, then sleeps until enough replicas acknowledge an offset at or past the last write, or the timeout expires
 - Replicas reconnect to the master automatically if the connection drops
 
 **RDB Persistence**
@@ -41,10 +41,11 @@ A Redis-compatible server written in C++17, featuring master-replica replication
 - **Thread-per-connection**: one thread per client, benchmarked up to 200 concurrent clients
 - **Coarse-grained locking**: a single storage mutex guards all data, held only for the in-memory operation
 - **Atomic offsets**: replication and ACK offsets are `std::atomic`
-- **Condition variables for blocking reads**, no polling threads:
+- **Condition variables for everything that waits**, no polling loops:
   - BLPOP/BRPOP: each waiter sleeps on its own condition variable. LPUSH/RPUSH pop the element for the oldest waiter, then wake only that thread, so clients are served in the order they blocked
   - XREAD BLOCK: waiters share one condition variable that XADD broadcasts on, since reads don't consume entries
-  - The check for data and the wait both happen under the storage mutex, so a write can't slip in between them and be missed
+  - WAIT: sleeps on a condition variable that each incoming replica ACK signals
+  - The check for data and the wait both happen under the same mutex that writers take, so a write or ACK can't slip in between them and be missed
 - **Opt-in debug tracing**: set `REDIS_DEBUG=1` to log every command to stderr. It's off by default because synchronous logging was the main throughput bottleneck (see below)
 
 **Network Protocol**
@@ -75,9 +76,9 @@ Throughput stays flat from 10 to 200 clients. With replicas attached, SET slows 
 |-------------|-----|-----|
 | BLPOP wake-up after RPUSH | 0.39 ms | 1.6 ms |
 | XREAD BLOCK wake-up after XADD | 0.41 ms | 1.5 ms |
-| SET + `WAIT 3` with 3 replicas | 12.6 ms | 13.9 ms |
+| `WAIT 3` after a SET, 3 replicas | 0.06 ms | 0.17 ms |
 
-In the WAIT test, every call got acknowledgments from all 3 replicas (400 of 400). After 200k random-key SETs, the master and all 3 replicas held identical key counts (86,646 keys each).
+In the WAIT tests, every call got acknowledgments from all 3 replicas (1,500 of 1,500). With one replica frozen (`SIGSTOP`), `WAIT 3 500` blocked for the full 500 ms and returned 2. After 200k random-key SETs, the master and all 3 replicas held identical key counts (86,646 keys each).
 
 **What changed along the way**
 
@@ -85,6 +86,7 @@ In the WAIT test, every call got acknowledgments from all 3 replicas (400 of 400
 |--------|--------|-------|
 | Made debug logging opt-in (it wrote unbuffered stderr on every command, serializing all threads) | ~17k SET / ~30k GET ops/sec at any client count | 136–152k ops/sec |
 | Replaced 10 ms polling loops with condition variables | BLPOP wake-up p50 5.6 ms, p99 13.1 ms | p50 0.39 ms, p99 1.6 ms |
+| Same change for WAIT's ACK loop | `WAIT 3` p50 12.6 ms, p99 13.9 ms | p50 0.06 ms, p99 0.17 ms |
 | Same change, idle cost | 31.5% of a core with 200 clients blocked | ~0% |
 
 Reproduce the throughput numbers with (after `./run_tests.sh` has built the server):
@@ -98,7 +100,7 @@ redis-benchmark -p 6379 -t set,get -n 100000 -c 50 -q
 ## Limitations
 
 - Initial sync sends an empty RDB snapshot, so a replica only receives writes made after it connects
-- WAIT checks for acknowledgments every 10 ms, which accounts for most of its latency
+- WAIT asking for more replicas than are connected returns as soon as all connected replicas ACK, instead of waiting out the timeout like Redis
 - The RDB loader handles string values only, and `KEYS` supports only the `*` pattern
 - SET supports `PX` expiry but not `EX`, `NX`, or `XX`
 - A client that disconnects while blocked isn't noticed until data arrives for its key or its timeout expires
