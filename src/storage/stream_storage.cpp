@@ -23,6 +23,20 @@ int compare_stream_ids(const std::string& id1, const std::string& id2) {
     return 0;
 }
 
+static std::string encode_stream_entries(const std::vector<StreamEntry>& entries) {
+    std::string response = "*" + std::to_string(entries.size()) + "\r\n";
+    for (const auto& entry : entries) {
+        response += "*2\r\n";
+        response += encode_bulk_string(entry.id);
+        response += "*" + std::to_string(entry.fields.size() * 2) + "\r\n";
+        for (const auto& [k, v] : entry.fields) {
+            response += encode_bulk_string(k);
+            response += encode_bulk_string(v);
+        }
+    }
+    return response;
+}
+
 std::string handle_xadd(const std::vector<std::string>& args) {
     if (args.size() < 5 || (args.size() % 2) == 0) {
         return encode_error("ERR wrong number of arguments for 'xadd' command");
@@ -145,21 +159,99 @@ std::string handle_xrange(const std::vector<std::string>& args) {
         }
     }
     
-    std::string response = "*" + std::to_string(results.size()) + "\r\n";
-    for (const auto& entry : results) {
-        response += "*2\r\n";
-        response += encode_bulk_string(entry.id);
-        response += "*" + std::to_string(entry.fields.size() * 2) + "\r\n";
-        for (const auto& [k, v] : entry.fields) {
-            response += encode_bulk_string(k);
-            response += encode_bulk_string(v);
+    return encode_stream_entries(results);
+}
+
+// caller holds storage_mutex, returns "" when no stream has entries after its id
+static std::string read_streams(const std::vector<std::string>& keys, const std::vector<std::string>& ids,
+                                size_t count) {
+    std::vector<std::pair<std::string, std::vector<StreamEntry>>> results;
+
+    for (size_t i = 0; i < keys.size(); i++) {
+        auto it = streamStorage.find(keys[i]);
+        if (it == streamStorage.end()) continue;
+
+        std::vector<StreamEntry> entries;
+        for (const auto& entry : it->second) {
+            if (compare_stream_ids(entry.id, ids[i]) > 0) {
+                entries.push_back(entry);
+                if (count > 0 && entries.size() == count) break;
+            }
+        }
+        if (!entries.empty()) {
+            results.push_back({keys[i], entries});
         }
     }
-    
+
+    if (results.empty()) return "";
+
+    std::string response = "*" + std::to_string(results.size()) + "\r\n";
+    for (const auto& [key, entries] : results) {
+        response += "*2\r\n";
+        response += encode_bulk_string(key);
+        response += encode_stream_entries(entries);
+    }
     return response;
 }
 
-std::string handle_xread(const std::vector<std::string>& args, int client_fd) {
-    // dw blocking is handled
-    return "*-1\r\n";
+// XREAD [COUNT n] [BLOCK ms] STREAMS key [key ...] id [id ...]
+std::string handle_xread(const std::vector<std::string>& args) {
+    size_t count = 0;        // 0 = no limit
+    long long block_ms = -1; // -1 = don't block, 0 = block forever
+
+    size_t i = 1;
+    while (i < args.size()) {
+        std::string option = args[i];
+        std::transform(option.begin(), option.end(), option.begin(), ::toupper);
+
+        if (option == "COUNT" && i + 1 < args.size()) {
+            count = std::stoull(args[i + 1]);
+            i += 2;
+        } else if (option == "BLOCK" && i + 1 < args.size()) {
+            block_ms = std::stoll(args[i + 1]);
+            i += 2;
+        } else if (option == "STREAMS") {
+            i++;
+            break;
+        } else {
+            return encode_error("ERR syntax error");
+        }
+    }
+
+    size_t remaining = args.size() - i;
+    if (remaining == 0 || remaining % 2 != 0) {
+        return encode_error("ERR Unbalanced 'xread' list of streams: for each stream key an ID or '$' must be specified.");
+    }
+
+    std::vector<std::string> keys(args.begin() + i, args.begin() + i + remaining / 2);
+    std::vector<std::string> ids(args.begin() + i + remaining / 2, args.end());
+
+    std::unique_lock<std::mutex> lock(storage_mutex);
+
+    // $ means only entries added after this call, so pin it to the current last id
+    for (size_t k = 0; k < keys.size(); k++) {
+        if (ids[k] == "$") {
+            auto it = streamStorage.find(keys[k]);
+            ids[k] = (it != streamStorage.end() && !it->second.empty()) ? it->second.back().id : "0-0";
+        }
+    }
+
+    std::string response = read_streams(keys, ids, count);
+
+    // redis doesn't block inside a transaction, see handle_blocking_pop
+    if (response.empty() && block_ms >= 0 && !in_exec) {
+        // XADD notifies after writing, and the check + wait happen under the same lock,
+        // so a new entry can't slip in between them
+        auto has_entries = [&] {
+            response = read_streams(keys, ids, count);
+            return !response.empty();
+        };
+        if (block_ms == 0) {
+            xread_cv.wait(lock, has_entries);
+        } else {
+            xread_cv.wait_for(lock, std::chrono::milliseconds(block_ms), has_entries);
+        }
+    }
+
+    return response.empty() ? "*-1\r\n" : response;
 }

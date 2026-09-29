@@ -2,36 +2,30 @@
 #define BLOCKING_H
 
 #include "../server.h"
+#include <list>
 
+// a client parked in BLPOP/BRPOP
+// the pushing thread pops an element for it, fills in key/value, and wakes it
 struct BlockedClient {
-    int client_fd;
     std::vector<std::string> keys;
-    long long timeout_ms;
-    long long start_time_ms;
     std::string command_type;
+    std::condition_variable cv;
+    bool served = false;
+    std::string key;
+    std::string value;
 };
 
-struct XReadBlockedClient {
-    int client_fd;
-    std::vector<std::string> stream_keys;
-    std::vector<std::string> stream_ids;
-    long long timeout_ms;
-    long long start_time_ms;
-};
+// guarded by storage_mutex, oldest waiter first
+extern std::list<BlockedClient*> blocked_clients;
 
-extern std::mutex blocked_clients_mutex;
-extern std::vector<BlockedClient> blocked_clients;
-extern std::mutex xread_blocked_mutex;
-extern std::vector<XReadBlockedClient> xread_blocked_clients;
-extern std::mutex blocked_fds_mutex;
-extern std::set<int> blocked_fds;
+// XREAD BLOCK waiters recheck their streams whenever this fires (guarded by storage_mutex)
+extern std::condition_variable xread_cv;
 
-std::string handle_blocking_pop(const std::vector<std::string>& args, int client_fd, const std::string& command);
-void process_blocked_clients();
-void process_xread_blocked_clients();
-bool is_client_blocked(int client_fd);
+// true while EXEC runs queued commands, blocking commands return right away (defined in command_handler.cpp)
+extern thread_local bool in_exec;
+
+std::string handle_blocking_pop(const std::vector<std::string>& args, const std::string& command);
 void notify_blocked_clients();
 void notify_xread_blocked_clients();
-void cleanup_client(int client_fd);
 
 #endif

@@ -140,13 +140,6 @@ int main(int argc, char **argv) {
         debug_log << "DEBUG MAIN: Replica thread detached\n";
     }
     
-    // start background threads
-    std::thread blocked_processor(process_blocked_clients);
-    blocked_processor.detach();
-    
-    std::thread xread_processor(process_xread_blocked_clients);
-    xread_processor.detach();
-    
     // accept connections
     while (true) {
         struct sockaddr_in client_addr;

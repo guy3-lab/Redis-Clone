@@ -38,7 +38,7 @@ std::string handle_llen(const std::vector<std::string>& args);
 // stream operations
 std::string handle_xadd(const std::vector<std::string>& args);
 std::string handle_xrange(const std::vector<std::string>& args);
-std::string handle_xread(const std::vector<std::string>& args, int client_fd);
+std::string handle_xread(const std::vector<std::string>& args);
 
 // stream helpers
 std::pair<long long, long long> parse_stream_id(const std::string& id);

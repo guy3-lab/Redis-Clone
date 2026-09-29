@@ -13,6 +13,7 @@ extern std::mutex transaction_mutex;
 extern std::unordered_map<int, TransactionState> client_transactions;
 std::mutex replica_connections_mutex;
 std::set<int> replica_connections;
+thread_local bool in_exec = false;
 
 bool is_in_transaction(int client_fd) {
     std::lock_guard<std::mutex> lock(transaction_mutex);
@@ -128,7 +129,7 @@ std::string execute_command(const std::vector<std::string>& message, int client_
         return handle_llen(message);
     }
     else if (command == "BLPOP" || command == "BRPOP") {
-        return handle_blocking_pop(message, client_fd, command);
+        return handle_blocking_pop(message, command);
     }
     
     // stream commands
@@ -144,7 +145,7 @@ std::string execute_command(const std::vector<std::string>& message, int client_
         return handle_xrange(message);
     }
     else if (command == "XREAD") {
-        return handle_xread(message, client_fd);
+        return handle_xread(message);
     }
 
     // sorted set commands
@@ -243,18 +244,12 @@ void handle_client(int client_fd) {
     while (true) {
         // DON'T EXIT for replica connections anymore
         // need to keep reading to get ACK responses
-        
-        if (!is_replica_connection && is_client_blocked(client_fd)) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
-            continue;
-        }
-        
+
         memset(buffer, 0, sizeof(buffer));
         int bytes_read = read(client_fd, buffer, sizeof(buffer));
-        
+
         if (bytes_read <= 0) {
-            cleanup_client(client_fd);
-            cleanup_subscriber(client_fd); 
+            cleanup_subscriber(client_fd);
             
             // clean up transaction state
             {
@@ -409,12 +404,14 @@ void handle_client(int client_fd) {
                 } else {
                     auto& state = client_transactions[client_fd];
                     std::vector<std::string> responses;
-                    
+
+                    in_exec = true;
                     for (const auto& queued_cmd : state.queued_commands) {
                         std::string cmd_response = execute_command(queued_cmd, client_fd);
                         responses.push_back(cmd_response);
                     }
-                    
+                    in_exec = false;
+
                     response = "*" + std::to_string(responses.size()) + "\r\n";
                     for (const auto& resp : responses) {
                         response += resp;
