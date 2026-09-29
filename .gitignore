@@ -84,3 +84,7 @@ wait_debug.txt
 .codecrafters
 .vscode
 
+
+# Coverage data
+*.gcno
+*.gcda
